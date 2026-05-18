@@ -63,11 +63,11 @@ Create a new account. Sends a 6-digit OTP to the provided email.
 **Request:**
 ```json
 {
-  "reg_number": "2021331001",
-  "name": "Neel Mahmud",
-  "email": "neel@student.sust.edu",
+  "reg_number": "2021331083",
+  "name": "Niloy Chandra Deb",
+  "email": "2021331083@student.sust.edu",
   "password": "test123456",
-  "codeforces_handle": "tourist"
+  "codeforces_handle": "Unga_Bunga"
 }
 ```
 
@@ -103,7 +103,7 @@ Verify the email using the 6-digit code sent to the user's inbox.
 **Request:**
 ```json
 {
-  "email": "neel@student.sust.edu",
+  "email": "2021331083@student.sust.edu",
   "code": "847293"
 }
 ```
@@ -133,7 +133,7 @@ Resend the verification code. Only works for `pending_verification` accounts.
 **Request:**
 ```json
 {
-  "email": "neel@student.sust.edu"
+  "email": "2021331083@student.sust.edu"
 }
 ```
 
@@ -159,7 +159,7 @@ Login and receive a JWT token. Only `active` accounts can login.
 **Request:**
 ```json
 {
-  "email": "neel@student.sust.edu",
+  "email": "2021331083@student.sust.edu",
   "password": "test123456"
 }
 ```
@@ -171,8 +171,8 @@ Login and receive a JWT token. Only `active` accounts can login.
   "token": "eyJ0eXAiOiJKV1QiLCJhbGci...",
   "user": {
     "user_id": 1,
-    "name": "Neel Mahmud",
-    "email": "neel@student.sust.edu",
+    "name": "Niloy Chandra Deb",
+    "email": "2021331083@student.sust.edu",
     "is_admin": false,
     "is_manager": false
   }
@@ -198,7 +198,7 @@ Initiate a password reset. Returns the account holder's name and sends a 6-digit
 **Request:**
 ```json
 {
-  "email": "neel@student.sust.edu"
+  "email": "2021331083@student.sust.edu"
 }
 ```
 
@@ -206,7 +206,7 @@ Initiate a password reset. Returns the account holder's name and sends a 6-digit
 ```json
 {
   "success": true,
-  "name": "Neel Mahmud",
+  "name": "Niloy Chandra Deb",
   "message": "Password reset code sent — check your email"
 }
 ```
@@ -227,7 +227,7 @@ Verify the reset OTP and set a new password. This is a single-step endpoint — 
 **Request:**
 ```json
 {
-  "email": "neel@student.sust.edu",
+  "email": "2021331083@student.sust.edu",
   "code": "847293",
   "new_password": "mynewsecurepassword"
 }
@@ -266,11 +266,11 @@ Get the logged-in user's profile.
   "success": true,
   "data": {
     "user_id": 1,
-    "reg_number": "2021331001",
-    "name": "Neel Mahmud",
-    "email": "neel@student.sust.edu",
+    "reg_number": "2021331083",
+    "name": "Niloy Chandra Deb",
+    "email": "2021331083@student.sust.edu",
     "vjudge_handle": null,
-    "codeforces_handle": "tourist",
+    "codeforces_handle": "Unga_Bunga",
     "is_admin": false,
     "is_manager": false,
     "status": "active",
@@ -289,9 +289,9 @@ Update profile. All fields are optional — only send what you want to change.
 **Request:**
 ```json
 {
-  "name": "Neel M",
+  "name": "Niloy Neel",
   "vjudge_handle": "neel_vj",
-  "codeforces_handle": "Petr"
+  "codeforces_handle": "neel_cf"
 }
 ```
 
@@ -308,11 +308,11 @@ Update profile. All fields are optional — only send what you want to change.
   "message": "Profile updated successfully",
   "data": {
     "user_id": 1,
-    "reg_number": "2021331001",
-    "name": "Neel M",
-    "email": "neel@student.sust.edu",
+    "reg_number": "2021331083",
+    "name": "Niloy Neel",
+    "email": "2021331083@student.sust.edu",
     "vjudge_handle": "neel_vj",
-    "codeforces_handle": "Petr",
+    "codeforces_handle": "neel_cf",
     "is_admin": false,
     "is_manager": false,
     "status": "active",
@@ -337,11 +337,11 @@ Get a user's live Codeforces stats. Data is fetched in real-time from the Codefo
 {
   "success": true,
   "data": {
-    "codeforces_handle": "tourist",
-    "current_rating": 3470,
-    "current_rank": "legendary grandmaster",
-    "max_rating": 4009,
-    "max_rank": "tourist",
+    "codeforces_handle": "Unga_Bunga",
+    "current_rating": 1250,
+    "current_rank": "pupil",
+    "max_rating": 1310,
+    "max_rank": "pupil",
     "solve_counts": {
       "last_1_month": {
         "total": 12,
@@ -433,7 +433,7 @@ Community leaderboard of all active registered users ranked by Codeforces rating
   "success": true,
   "count": 5,
   "data": [
-    { "rank": 1, "name": "Neel", "codeforces_handle": "tourist", "current_rating": 3470 },
+    { "rank": 1, "name": "Niloy", "codeforces_handle": "Unga_Bunga", "current_rating": 1250 },
     { "rank": 2, "name": "Dipu", "codeforces_handle": "postmasterr", "current_rating": 1392 },
     { "rank": 3, "name": "Faiyaz", "codeforces_handle": "EDM_FI", "current_rating": 1292 },
     { "rank": 4, "name": "Alif", "codeforces_handle": "alif_new", "current_rating": null },
@@ -630,7 +630,7 @@ List all events with their teams and team members.
           "team_name": "SUST_Sigma",
           "standing": "3rd",
           "members": [
-            { "member_id": 1, "member_name": "Neel", "codeforces_handle": "tourist" },
+            { "member_id": 1, "member_name": "Neel", "codeforces_handle": "Unga_Bunga" },
             { "member_id": 2, "member_name": "Dipu", "codeforces_handle": "postmasterr" },
             { "member_id": 3, "member_name": "Faiyaz", "codeforces_handle": "EDM_FI" }
           ]
@@ -692,7 +692,7 @@ Add a team to an event (3 members required).
   "team_name": "SUST_Sigma",
   "standing": "3rd",
   "members": [
-    { "member_name": "Neel", "codeforces_handle": "tourist" },
+    { "member_name": "Neel", "codeforces_handle": "Unga_Bunga" },
     { "member_name": "Dipu", "codeforces_handle": "postmasterr" },
     { "member_name": "Faiyaz", "codeforces_handle": "EDM_FI" }
   ]
@@ -810,17 +810,28 @@ Analyze one or more VJudge contests and produce a ranked leaderboard. Fetches co
   "data": {
     "title": "TFC Season 1 Final Standings",
     "total_contests": 2,
-    "total_participants": 46,
+    "total_participants": 30,
     "rankings": [
       {
         "rank": 1,
-        "handle": "2022331043_saif",
-        "total_score": 2100.0,
+        "handle": "user_alpha",
+        "total_score": 11.0,
         "problems_solved": 11,
         "total_penalty": 162,
         "contest_details": [
-          { "contest_name": "TFC 05", "solved": 6, "penalty": 81, "score": 1500.0 },
-          { "contest_name": "TFC 04", "solved": 5, "penalty": 81, "score": 600.0 }
+          { "contest_name": "Contest Round 1", "solved": 6, "penalty": 81, "score": 6.0 },
+          { "contest_name": "Contest Round 2", "solved": 5, "penalty": 81, "score": 5.0 }
+        ]
+      },
+      {
+        "rank": 2,
+        "handle": "user_beta",
+        "total_score": 9.0,
+        "problems_solved": 9,
+        "total_penalty": 120,
+        "contest_details": [
+          { "contest_name": "Contest Round 1", "solved": 5, "penalty": 60, "score": 5.0 },
+          { "contest_name": "Contest Round 2", "solved": 4, "penalty": 60, "score": 4.0 }
         ]
       }
     ]

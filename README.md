@@ -22,8 +22,9 @@
 | Database | PostgreSQL (Neon) | Serverless Postgres with connection pooling |
 | ORM | SQLx | Compile-time checked SQL queries |
 | Auth | JWT + Argon2id | Stateless authentication with memory-hard hashing |
-| Email | Resend | Transactional email for OTP verification |
+| Email | Resend | Transactional email for OTP verification + password reset |
 | External API | Codeforces | Live rating, solve stats, contest history |
+| External API | VJudge | Contest standings for ICPC-style ranking |
 
 ## Quick Start
 
@@ -90,7 +91,7 @@ src/
 │   ├── codeforces.rs            # CF API types, ProfileStats, Leaderboard
 │   └── ranker.rs                # VJudge contest types, RankerRequest/Response
 ├── handlers/
-│   ├── auth_handler.rs          # register, login, OTP verification
+│   ├── auth_handler.rs          # register, login, OTP, password reset
 │   ├── user_handler.rs          # profile management
 │   ├── admin_handler.rs         # user approval, rejection, banning
 │   ├── contest_handler.rs       # contest CRUD
@@ -100,7 +101,7 @@ src/
 │   ├── ranker_handler.rs        # VJudge ranker + PDF download
 │   └── health_handler.rs        # health check
 ├── services/
-│   ├── email.rs                 # OTP email via Resend API
+│   ├── email.rs                 # OTP + password reset emails via Resend API
 │   ├── codeforces.rs            # CF API client (validate, fetch, aggregate)
 │   ├── vjudge.rs                # VJudge contest data fetcher
 │   └── ranker.rs                # ICPC ranking algorithm + multi-contest merge
