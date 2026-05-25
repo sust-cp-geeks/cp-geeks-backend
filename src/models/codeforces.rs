@@ -103,7 +103,9 @@ pub struct CfProfileStats {
 #[derive(Debug, Serialize)]
 pub struct LeaderboardEntry {
     pub rank: i32,
+    pub user_id: i32,
     pub name: String,
     pub codeforces_handle: String,
     pub current_rating: Option<i32>,
+    pub current_rank: Option<String>,
 }
