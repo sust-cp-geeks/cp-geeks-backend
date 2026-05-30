@@ -58,6 +58,11 @@ fn process_contest(
         let verdict = sub.get(2).and_then(|v| v.as_i64()).unwrap_or(0);
         let time_ms = sub.get(3).and_then(|v| v.as_i64()).unwrap_or(0);
 
+        // skip upsolves — only count submissions during the contest
+        if time_ms > contest.length {
+            continue;
+        }
+
         if prob_idx < 0 {
             continue;
         }

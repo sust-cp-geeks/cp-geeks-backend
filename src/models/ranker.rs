@@ -8,6 +8,7 @@ use std::collections::HashMap;
 pub struct VjudgeContest {
     pub id: u64,
     pub title: String,
+    pub length: i64, // contest duration in milliseconds
     pub participants: HashMap<String, serde_json::Value>,
     pub submissions: Vec<Vec<serde_json::Value>>,
 }
