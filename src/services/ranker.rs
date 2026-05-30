@@ -10,7 +10,7 @@ use crate::services::vjudge;
 struct ProblemAttempt {
     solved: bool,
     wrong_attempts: i64,
-    solve_time_ms: i64,
+    solve_time_secs: i64,
 }
 
 // processes a single vjudge contest into per-user scores
@@ -56,10 +56,12 @@ fn process_contest(
         };
         let prob_idx = sub.get(1).and_then(|v| v.as_i64()).unwrap_or(-1);
         let verdict = sub.get(2).and_then(|v| v.as_i64()).unwrap_or(0);
-        let time_ms = sub.get(3).and_then(|v| v.as_i64()).unwrap_or(0);
+        let time_secs = sub.get(3).and_then(|v| v.as_i64()).unwrap_or(0);
 
         // skip upsolves — only count submissions during the contest
-        if time_ms > contest.length {
+        // vjudge api: submission time is in SECONDS, contest.length is in MILLISECONDS
+        let contest_duration_secs = contest.length / 1000;
+        if time_secs > contest_duration_secs {
             continue;
         }
 
@@ -75,7 +77,7 @@ fn process_contest(
                     .map(|_| ProblemAttempt {
                         solved: false,
                         wrong_attempts: 0,
-                        solve_time_ms: 0,
+                        solve_time_secs: 0,
                     })
                     .collect()
             });
@@ -91,7 +93,7 @@ fn process_contest(
 
         if verdict == 1 {
             problems[prob_idx].solved = true;
-            problems[prob_idx].solve_time_ms = time_ms;
+            problems[prob_idx].solve_time_secs = time_secs;
         } else {
             problems[prob_idx].wrong_attempts += 1;
         }
@@ -115,7 +117,7 @@ fn process_contest(
                 solved_count += 1;
 
                 // icpc penalty: solve_time_minutes + 20 * wrong_attempts
-                let time_min = p.solve_time_ms / 60000;
+                let time_min = p.solve_time_secs / 60;
                 penalty += time_min + 20 * p.wrong_attempts;
 
                 // weighted score (default weight = 1.0)
