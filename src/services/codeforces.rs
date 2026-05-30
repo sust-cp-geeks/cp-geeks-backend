@@ -24,7 +24,12 @@ const BUCKETS: &[(&str, i32, i32)] = &[
 pub async fn validate_handle(handle: &str) -> Result<CfUserInfo, AppError> {
     let url = format!("{}/user.info?handles={}", CF_API_BASE, handle);
 
-    let response = reqwest::get(&url).await.map_err(|e| {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap();
+
+    let response = client.get(&url).send().await.map_err(|e| {
         tracing::error!("failed to reach codeforces api: {}", e);
         AppError::InternalError("Could not reach Codeforces API".to_string())
     })?;
