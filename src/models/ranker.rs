@@ -45,6 +45,7 @@ pub struct RankedParticipant {
 #[derive(Debug, Clone, Serialize)]
 pub struct RankerResponse {
     pub title: String,
+    pub contest_ids: Vec<u64>,
     pub total_contests: usize,
     pub total_participants: usize,
     pub rankings: Vec<RankedParticipant>,

@@ -222,6 +222,7 @@ pub async fn analyze(request: &RankerRequest) -> Result<RankerResponse, AppError
 
     Ok(RankerResponse {
         title: request.title.clone(),
+        contest_ids: request.contest_ids.clone(),
         total_contests: contests.len(),
         total_participants: rankings.len(),
         rankings,

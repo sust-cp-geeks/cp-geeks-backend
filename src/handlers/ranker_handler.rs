@@ -73,8 +73,7 @@ pub async fn download_pdf(
 // builds a branded pdf document from the ranking results
 fn generate_pdf(result: &RankerResponse) -> Result<Vec<u8>, AppError> {
     use genpdf::elements::{Paragraph, TableLayout};
-    use genpdf::style;
-    use genpdf::Element as _;
+    use genpdf::{style, Alignment, Element as _};
 
     let font_family = genpdf::fonts::from_files("./fonts", "LiberationSans", None)
         .map_err(|e| AppError::InternalError(format!("Failed to load fonts: {}", e)))?;
@@ -83,71 +82,134 @@ fn generate_pdf(result: &RankerResponse) -> Result<Vec<u8>, AppError> {
     doc.set_title(&result.title);
 
     let mut decorator = genpdf::SimplePageDecorator::new();
-    decorator.set_margins(15);
+    decorator.set_margins(20);
     doc.set_page_decorator(decorator);
 
-    // header: sust cp geeks branding
+    // --- header section (centered) ---
+
     doc.push(
         Paragraph::new("SUST CP Geeks")
-            .styled(style::Style::new().bold().with_font_size(20)),
+            .aligned(Alignment::Center)
+            .styled(style::Style::new().bold().with_font_size(24)),
     );
+
+    doc.push(
+        Paragraph::new("VJudge Standing")
+            .aligned(Alignment::Center)
+            .styled(style::Style::new().bold().with_font_size(18)),
+    );
+
     doc.push(Paragraph::new(""));
 
-    // title
+    // --- title ---
+
     doc.push(
         Paragraph::new(&result.title)
-            .styled(style::Style::new().bold().with_font_size(16)),
+            .aligned(Alignment::Center)
+            .styled(style::Style::new().bold().with_font_size(14)),
     );
+
     doc.push(Paragraph::new(""));
 
-    // summary line
-    doc.push(Paragraph::new(format!(
-        "Contests: {}  |  Participants: {}",
-        result.total_contests, result.total_participants,
-    )));
+    // --- contest info ---
+
+    let ids_str = result
+        .contest_ids
+        .iter()
+        .map(|id| id.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    doc.push(
+        Paragraph::new(format!("Contest IDs: {}", ids_str))
+            .aligned(Alignment::Center)
+            .styled(style::Style::new().with_font_size(11)),
+    );
+
+    doc.push(
+        Paragraph::new(format!(
+            "Total Contests: {}  |  Total Participants: {}",
+            result.total_contests, result.total_participants,
+        ))
+        .aligned(Alignment::Center)
+        .styled(style::Style::new().with_font_size(11)),
+    );
+
+    doc.push(Paragraph::new(""));
     doc.push(Paragraph::new(""));
 
-    // rankings table
-    let mut table = TableLayout::new(vec![1, 3, 2, 2, 2]);
+    // --- rankings table ---
+    use genpdf::elements::PaddedElement;
 
-    // table header
-    let mut header_row = table.row();
-    header_row.push_element(
-        Paragraph::new("Rank").styled(style::Style::new().bold()),
-    );
-    header_row.push_element(
-        Paragraph::new("Handle").styled(style::Style::new().bold()),
-    );
-    header_row.push_element(
-        Paragraph::new("Score").styled(style::Style::new().bold()),
-    );
-    header_row.push_element(
-        Paragraph::new("Solved").styled(style::Style::new().bold()),
-    );
-    header_row.push_element(
-        Paragraph::new("Penalty").styled(style::Style::new().bold()),
-    );
-    header_row.push().ok();
+    let mut table = TableLayout::new(vec![1, 4, 2, 2, 2]);
+    table.set_cell_decorator(genpdf::elements::FrameCellDecorator::new(true, true, false));
 
-    // data rows
-    for p in &result.rankings {
-        let mut row = table.row();
-        row.push_element(Paragraph::new(p.rank.to_string()));
-        row.push_element(Paragraph::new(&p.handle));
-        row.push_element(Paragraph::new(format!("{:.0}", p.total_score)));
-        row.push_element(Paragraph::new(p.problems_solved.to_string()));
-        row.push_element(Paragraph::new(p.total_penalty.to_string()));
-        row.push().ok();
+    // helper macro for padded cells
+    macro_rules! pad {
+        ($elem:expr) => {
+            PaddedElement::new($elem, 1)
+        };
     }
 
-    doc.push(table);
+    let header_style = style::Style::new().bold().with_font_size(12);
+    let row_style = style::Style::new().with_font_size(11);
+
+    // we manually paginate to fix genpdf's broken borders at page boundaries
+    // and to repeat the header row on every page.
+    let mut is_first_page = true;
+    let mut current_idx = 0;
+
+    while current_idx < result.rankings.len() {
+        if !is_first_page {
+            doc.push(genpdf::elements::PageBreak::new());
+        }
+
+        let mut table = TableLayout::new(vec![1, 4, 2, 2, 2]);
+        table.set_cell_decorator(genpdf::elements::FrameCellDecorator::new(true, true, false));
+
+        // table header row
+        let mut header_row = table.row();
+        header_row.push_element(pad!(Paragraph::new("Rank").styled(header_style.clone())));
+        header_row.push_element(pad!(Paragraph::new("Handle").styled(header_style.clone())));
+        header_row.push_element(pad!(Paragraph::new("Score").styled(header_style.clone())));
+        header_row.push_element(pad!(Paragraph::new("Solved").styled(header_style.clone())));
+        header_row.push_element(pad!(Paragraph::new("Penalty").styled(header_style.clone())));
+        header_row.push().ok();
+
+        // 25 rows fit comfortably on the first page (with title), 36 rows fit on subsequent pages
+        let chunk_size = if is_first_page { 25 } else { 36 };
+        let end_idx = (current_idx + chunk_size).min(result.rankings.len());
+
+        for p in &result.rankings[current_idx..end_idx] {
+            let mut row = table.row();
+            row.push_element(pad!(Paragraph::new(p.rank.to_string()).styled(row_style.clone())));
+            row.push_element(pad!(Paragraph::new(&p.handle).styled(row_style.clone())));
+            row.push_element(pad!(Paragraph::new(format!("{:.0}", p.total_score)).styled(row_style.clone())));
+            row.push_element(pad!(Paragraph::new(p.problems_solved.to_string()).styled(row_style.clone())));
+            row.push_element(pad!(Paragraph::new(p.total_penalty.to_string()).styled(row_style.clone())));
+            row.push().ok();
+        }
+
+        doc.push(table);
+        current_idx = end_idx;
+        is_first_page = false;
+    }
+    doc.push(Paragraph::new(""));
     doc.push(Paragraph::new(""));
 
-    // footer with generation date
+    // --- footer ---
+
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M UTC").to_string();
     doc.push(
         Paragraph::new(format!("Generated on {}", now))
-            .styled(style::Style::new().italic().with_font_size(8)),
+            .aligned(Alignment::Center)
+            .styled(style::Style::new().italic().with_font_size(9)),
+    );
+
+    doc.push(
+        Paragraph::new("Powered by SUST CP Geeks Platform")
+            .aligned(Alignment::Center)
+            .styled(style::Style::new().italic().with_font_size(9)),
     );
 
     // render to bytes
