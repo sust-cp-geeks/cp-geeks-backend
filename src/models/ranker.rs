@@ -38,6 +38,7 @@ pub struct ContestResult {
 #[derive(Debug, Clone, Serialize)]
 pub struct RankedParticipant {
     pub rank: i32,
+    pub real_name: String,
     pub handle: String,
     pub total_score: f64,
     pub problems_solved: usize,

@@ -199,7 +199,7 @@ fn process_contest(
 }
 
 // main ranking function: fetches all contests, merges, ranks
-pub async fn analyze(request: &RankerRequest) -> Result<RankerResponse, AppError> {
+pub async fn analyze(pool: &sqlx::PgPool, request: &RankerRequest) -> Result<RankerResponse, AppError> {
     if request.contest_ids.is_empty() {
         return Err(AppError::BadRequest(
             "At least one contest ID is required".to_string(),
@@ -300,6 +300,22 @@ pub async fn analyze(request: &RankerRequest) -> Result<RankerResponse, AppError
         ));
     }
 
+    // Fetch all users to map vjudge handles to real names
+    use sqlx::Row;
+    let db_users = sqlx::query("SELECT name, vjudge_handle FROM users WHERE vjudge_handle IS NOT NULL")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| AppError::InternalError(format!("Failed to fetch users: {}", e)))?;
+
+    let mut handle_to_name: HashMap<String, String> = HashMap::new();
+    for row in db_users {
+        let name: String = row.get("name");
+        let vjudge_handle: Option<String> = row.get("vjudge_handle");
+        if let Some(handle) = vjudge_handle {
+            handle_to_name.insert(handle.to_lowercase(), name);
+        }
+    }
+
     // sort: total solved desc, then penalty asc, then upsolved desc
     participants.sort_by(|a, b| {
         b.2.cmp(&a.2) // solved desc
@@ -322,8 +338,11 @@ pub async fn analyze(request: &RankerRequest) -> Result<RankerResponse, AppError
             }
         }
 
+        let real_name = handle_to_name.get(&handle.to_lowercase()).cloned().unwrap_or_else(|| "unregistered".to_string());
+
         rankings.push(RankedParticipant {
             rank: current_rank,
+            real_name,
             handle,
             total_score: score,
             problems_solved: solved,
