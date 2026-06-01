@@ -20,6 +20,7 @@ pub struct RankerRequest {
     pub title: String,
     pub contest_ids: Vec<u64>,
     pub problem_weights: Option<Vec<Option<Vec<f64>>>>,
+    pub custom_titles: Option<Vec<String>>,
 }
 
 // --- ranker response ---
@@ -28,8 +29,10 @@ pub struct RankerRequest {
 pub struct ContestResult {
     pub contest_name: String,
     pub solved: usize,
+    pub upsolved: usize,
     pub penalty: i64,
     pub score: f64,
+    pub participated: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -38,7 +41,9 @@ pub struct RankedParticipant {
     pub handle: String,
     pub total_score: f64,
     pub problems_solved: usize,
+    pub total_upsolved: usize,
     pub total_penalty: i64,
+    pub contests_participated: usize,
     pub contest_details: Vec<ContestResult>,
 }
 

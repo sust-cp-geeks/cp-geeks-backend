@@ -9,6 +9,17 @@ use crate::errors::AppError;
 use crate::models::ranker::{RankerRequest, RankerResponse};
 use crate::services::ranker;
 
+// fetch contest title from vjudge
+pub async fn get_contest_title(
+    Path(id): Path<u64>,
+) -> Result<Json<Value>, AppError> {
+    let contest = crate::services::vjudge::fetch_contest(id).await?;
+    Ok(Json(json!({
+        "success": true,
+        "title": contest.title
+    })))
+}
+
 // analyze contests and return ranked results
 pub async fn analyze(
     State(state): State<AppState>,
@@ -141,7 +152,7 @@ fn generate_pdf(result: &RankerResponse) -> Result<Vec<u8>, AppError> {
     // --- rankings table ---
     use genpdf::elements::PaddedElement;
 
-    let mut table = TableLayout::new(vec![1, 4, 2, 2, 2]);
+    let mut table = TableLayout::new(vec![1, 4, 2, 2, 2, 2]);
     table.set_cell_decorator(genpdf::elements::FrameCellDecorator::new(true, true, false));
 
     // helper macro for padded cells
@@ -164,16 +175,17 @@ fn generate_pdf(result: &RankerResponse) -> Result<Vec<u8>, AppError> {
             doc.push(genpdf::elements::PageBreak::new());
         }
 
-        let mut table = TableLayout::new(vec![1, 4, 2, 2, 2]);
+        let mut table = TableLayout::new(vec![1, 4, 2, 2, 2, 2]);
         table.set_cell_decorator(genpdf::elements::FrameCellDecorator::new(true, true, false));
 
         // table header row
         let mut header_row = table.row();
         header_row.push_element(pad!(Paragraph::new("Rank").styled(header_style.clone())));
         header_row.push_element(pad!(Paragraph::new("Handle").styled(header_style.clone())));
-        header_row.push_element(pad!(Paragraph::new("Score").styled(header_style.clone())));
+        header_row.push_element(pad!(Paragraph::new("Contests").styled(header_style.clone())));
         header_row.push_element(pad!(Paragraph::new("Solved").styled(header_style.clone())));
         header_row.push_element(pad!(Paragraph::new("Penalty").styled(header_style.clone())));
+        header_row.push_element(pad!(Paragraph::new("Upsolved").styled(header_style.clone())));
         header_row.push().ok();
 
         // 25 rows fit comfortably on the first page (with title), 36 rows fit on subsequent pages
@@ -184,9 +196,10 @@ fn generate_pdf(result: &RankerResponse) -> Result<Vec<u8>, AppError> {
             let mut row = table.row();
             row.push_element(pad!(Paragraph::new(p.rank.to_string()).styled(row_style.clone())));
             row.push_element(pad!(Paragraph::new(&p.handle).styled(row_style.clone())));
-            row.push_element(pad!(Paragraph::new(format!("{:.0}", p.total_score)).styled(row_style.clone())));
+            row.push_element(pad!(Paragraph::new(p.contests_participated.to_string()).styled(row_style.clone())));
             row.push_element(pad!(Paragraph::new(p.problems_solved.to_string()).styled(row_style.clone())));
             row.push_element(pad!(Paragraph::new(p.total_penalty.to_string()).styled(row_style.clone())));
+            row.push_element(pad!(Paragraph::new(p.total_upsolved.to_string()).styled(row_style.clone())));
             row.push().ok();
         }
 
