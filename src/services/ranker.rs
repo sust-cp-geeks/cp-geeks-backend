@@ -199,7 +199,7 @@ fn process_contest(
 }
 
 // main ranking function: fetches all contests, merges, ranks
-pub async fn analyze(request: &RankerRequest) -> Result<RankerResponse, AppError> {
+pub async fn analyze(pool: &sqlx::PgPool, request: &RankerRequest) -> Result<RankerResponse, AppError> {
     if request.contest_ids.is_empty() {
         return Err(AppError::BadRequest(
             "At least one contest ID is required".to_string(),
@@ -403,8 +403,11 @@ pub async fn analyze(request: &RankerRequest) -> Result<RankerResponse, AppError
             }
         }
 
+        let real_name = handle_to_name.get(&handle.to_lowercase()).cloned().unwrap_or_else(|| "unregistered".to_string());
+
         rankings.push(RankedParticipant {
             rank: current_rank,
+            real_name,
             handle,
             total_score: score,
             problems_solved: solved,

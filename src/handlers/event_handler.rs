@@ -103,6 +103,7 @@ async fn build_event_responses(
                 event_id: e.event_id,
                 description: e.description,
                 event_date: e.event_date,
+                vjudge_contest_ids: e.vjudge_contest_ids,
                 teams,
             }
         })
@@ -170,11 +171,12 @@ pub async fn create_event(
         })?;
 
     let event = sqlx::query_as::<_, Event>(
-        r#"INSERT INTO events (description, event_date)
-           VALUES ($1, $2) RETURNING *"#,
+        r#"INSERT INTO events (description, event_date, vjudge_contest_ids)
+           VALUES ($1, $2, $3) RETURNING *"#,
     )
     .bind(&body.description)
     .bind(event_date)
+    .bind(&body.vjudge_contest_ids)
     .fetch_one(&state.pool)
     .await?;
 
@@ -206,7 +208,6 @@ pub async fn update_event(
 
     let existing = existing.ok_or(AppError::NotFound("Event not found".to_string()))?;
 
-    // merge: use new value if provided, keep existing if not
     let new_description = body.description.unwrap_or(existing.description);
     let new_date = match body.event_date {
         Some(d) => NaiveDateTime::parse_from_str(&d, "%Y-%m-%dT%H:%M:%S").map_err(|_| {
@@ -216,15 +217,22 @@ pub async fn update_event(
         })?,
         None => existing.event_date,
     };
+    
+    // new_vjudge_contest_ids logic
+    // if body provides Some, use it (even if Some(empty_vec)), else keep existing. 
+    // Wait, since `Option<Vec<i64>>` in `UpdateEventInput` means if it's missing from JSON it's `None`. 
+    // If they want to clear it, they'd send `Some(vec![])`.
+    let new_vjudge_contest_ids = body.vjudge_contest_ids.or(existing.vjudge_contest_ids);
 
     validate_string(&new_description, "Description", 1, 10000)?;
 
     let event = sqlx::query_as::<_, Event>(
-        r#"UPDATE events SET description = $1, event_date = $2
-           WHERE event_id = $3 RETURNING *"#,
+        r#"UPDATE events SET description = $1, event_date = $2, vjudge_contest_ids = $3
+           WHERE event_id = $4 RETURNING *"#,
     )
     .bind(&new_description)
     .bind(new_date)
+    .bind(&new_vjudge_contest_ids)
     .bind(id)
     .fetch_one(&state.pool)
     .await?;
