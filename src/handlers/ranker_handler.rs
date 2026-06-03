@@ -218,6 +218,7 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
         for p in &result.rankings[current_idx..end_idx] {
             let mut row = table.row();
             row.push_element(pad!(Paragraph::new(p.rank.to_string()).styled(row_style.clone())));
+            row.push_element(pad!(Paragraph::new(p.real_name.clone()).styled(row_style.clone())));
             let handle_text = if include_details {
                 format!("{} (Total)", p.handle)
             } else {
@@ -234,6 +235,7 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
                 for detail in &p.contest_details {
                     let mut detail_row = table.row();
                     detail_row.push_element(pad!(Paragraph::new("").styled(row_style.clone())));
+                    detail_row.push_element(pad!(Paragraph::new("").styled(detail_style.clone())));
                     
                     let detail_handle = format!("  └─ {}", detail.contest_name);
                     detail_row.push_element(pad!(Paragraph::new(detail_handle).styled(detail_style.clone())));

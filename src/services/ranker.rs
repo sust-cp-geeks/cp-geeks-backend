@@ -64,6 +64,9 @@ fn process_contest(
     let mut sorted_submissions = contest.submissions.clone();
     sorted_submissions.sort_by_key(|s| s.get(3).and_then(|v| v.as_i64()).unwrap_or(0));
 
+    // vjudge api: contest.length is in milliseconds, submission times are in seconds
+    let contest_duration_secs = contest.length / 1000;
+
     for sub in &sorted_submissions {
         let uid = match sub.first() {
             Some(v) => {
@@ -86,7 +89,6 @@ fn process_contest(
         }
         let prob_idx = prob_idx as usize;
 
-        let contest_duration_secs = contest.length / 1000;
         let entry = user_participated.entry(uid.clone()).or_insert(false);
         if time_secs <= contest_duration_secs {
             *entry = true;
@@ -205,6 +207,15 @@ pub async fn analyze(pool: &sqlx::PgPool, request: &RankerRequest) -> Result<Ran
             "At least one contest ID is required".to_string(),
         ));
     }
+
+    // build vjudge_handle -> real_name map from the database
+    let rows = sqlx::query_as::<_, (String, String)>(
+        "SELECT LOWER(vjudge_handle), name FROM users WHERE vjudge_handle IS NOT NULL"
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let handle_to_name: HashMap<String, String> = rows.into_iter().collect();
 
     // fetch all contests in parallel
     let futures: Vec<_> = request
