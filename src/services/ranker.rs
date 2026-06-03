@@ -151,13 +151,14 @@ fn process_contest(
         let mut score = 0.0f64;
 
         if participated {
+            let mut total_solve_time_secs = 0i64;
+            let mut total_wrong_attempts_for_solved = 0i64;
+
             for (i, p) in problems.iter().enumerate() {
                 if p.solved_during {
                     solved_count += 1;
-
-                    // icpc penalty: solve_time_minutes + 20 * wrong_attempts
-                    let time_min = p.solve_time_secs / 60;
-                    penalty += time_min + 20 * p.wrong_attempts_during;
+                    total_solve_time_secs += p.solve_time_secs;
+                    total_wrong_attempts_for_solved += p.wrong_attempts_during;
 
                     // weighted score (default weight = 1.0)
                     let weight = weights
@@ -170,6 +171,7 @@ fn process_contest(
                     upsolved_count += 1;
                 }
             }
+            penalty = (total_solve_time_secs / 60) + (20 * total_wrong_attempts_for_solved);
         } else {
             // Not participated: solve count 0, penalty 0.
             // Any solved problems count as upsolved.
@@ -269,7 +271,8 @@ pub async fn analyze(pool: &sqlx::PgPool, request: &RankerRequest) -> Result<Ran
         }
     }
 
-    let mut participants: Vec<(String, f64, usize, usize, i64, usize, Vec<ContestResult>)> = Vec::new();
+    // tuple: (handle, real_name, score, solved, upsolved, penalty, contests_participated, details)
+    let mut participants: Vec<(String, String, f64, usize, usize, i64, usize, Vec<ContestResult>)> = Vec::new();
 
     for (lowercase_handle, original_handle) in &unique_handles {
         let mut total_score = 0.0;
@@ -312,8 +315,12 @@ pub async fn analyze(pool: &sqlx::PgPool, request: &RankerRequest) -> Result<Ran
             }
         }
 
+        let real_name = handle_to_name.get(lowercase_handle).cloned()
+            .unwrap_or_else(|| "unregistered".to_string());
+
         participants.push((
             original_handle.clone(),
+            real_name,
             total_score,
             total_solved,
             total_upsolved,
@@ -380,7 +387,11 @@ pub async fn analyze(pool: &sqlx::PgPool, request: &RankerRequest) -> Result<Ran
                 }
             }
 
+            // for merged handles, display comma-separated vjudge handles
+            let merged_handle_display = merge.handles.join(",");
+
             participants.push((
+                merged_handle_display,
                 merge.name.clone(),
                 total_score,
                 total_solved,
@@ -394,16 +405,16 @@ pub async fn analyze(pool: &sqlx::PgPool, request: &RankerRequest) -> Result<Ran
 
     // sort: total solved desc, then penalty asc, then upsolved desc
     participants.sort_by(|a, b| {
-        b.2.cmp(&a.2) // solved desc
-            .then(a.4.cmp(&b.4)) // penalty asc
-            .then(b.3.cmp(&a.3)) // upsolved desc
+        b.3.cmp(&a.3) // solved desc
+            .then(a.5.cmp(&b.5)) // penalty asc
+            .then(b.4.cmp(&a.4)) // upsolved desc
     });
 
     // assign ranks (equal solved + penalty + upsolved = same rank)
     let mut rankings: Vec<RankedParticipant> = Vec::new();
     let mut current_rank = 1;
 
-    for (i, (handle, score, solved, upsolved, penalty, contests_participated, details)) in participants.into_iter().enumerate() {
+    for (i, (handle, real_name, score, solved, upsolved, penalty, contests_participated, details)) in participants.into_iter().enumerate() {
         if i > 0 {
             let prev = &rankings[i - 1];
             if solved != prev.problems_solved
@@ -413,8 +424,6 @@ pub async fn analyze(pool: &sqlx::PgPool, request: &RankerRequest) -> Result<Ran
                 current_rank = (i + 1) as i32;
             }
         }
-
-        let real_name = handle_to_name.get(&handle.to_lowercase()).cloned().unwrap_or_else(|| "unregistered".to_string());
 
         rankings.push(RankedParticipant {
             rank: current_rank,

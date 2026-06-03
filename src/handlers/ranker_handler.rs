@@ -90,7 +90,7 @@ pub async fn download_pdf(
 
 // builds a branded pdf document from the ranking results
 fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8>, AppError> {
-    use genpdf::elements::{Paragraph, TableLayout};
+    use genpdf::elements::{Paragraph, PaddedElement, TableLayout};
     use genpdf::{style, Alignment, Element as _};
 
     let font_family = genpdf::fonts::from_files("./fonts", "LiberationSans", None)
@@ -108,13 +108,13 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
     doc.push(
         Paragraph::new("SUST CP Geeks")
             .aligned(Alignment::Center)
-            .styled(style::Style::new().bold().with_font_size(24)),
+            .styled(style::Style::new().bold().with_font_size(22)),
     );
 
     doc.push(
         Paragraph::new("VJudge Standing")
             .aligned(Alignment::Center)
-            .styled(style::Style::new().bold().with_font_size(18)),
+            .styled(style::Style::new().bold().with_font_size(16)),
     );
 
     doc.push(Paragraph::new(""));
@@ -124,7 +124,7 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
     doc.push(
         Paragraph::new(&result.title)
             .aligned(Alignment::Center)
-            .styled(style::Style::new().bold().with_font_size(14)),
+            .styled(style::Style::new().bold().with_font_size(13)),
     );
 
     doc.push(Paragraph::new(""));
@@ -141,7 +141,7 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
     doc.push(
         Paragraph::new(format!("Contest IDs: {}", ids_str))
             .aligned(Alignment::Center)
-            .styled(style::Style::new().with_font_size(11)),
+            .styled(style::Style::new().with_font_size(10)),
     );
 
     doc.push(
@@ -150,17 +150,13 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
             result.total_contests, result.total_participants,
         ))
         .aligned(Alignment::Center)
-        .styled(style::Style::new().with_font_size(11)),
+        .styled(style::Style::new().with_font_size(10)),
     );
 
     doc.push(Paragraph::new(""));
-    doc.push(Paragraph::new(""));
 
     // --- rankings table ---
-    use genpdf::elements::PaddedElement;
-
-    let mut table = TableLayout::new(vec![1, 3, 3, 1, 1, 2, 1]);
-    table.set_cell_decorator(genpdf::elements::FrameCellDecorator::new(true, true, false));
+    // columns: Rank | Handle | Contest Count | Solved | Penalty | Upsolved | Total Solved
 
     // helper macro for padded cells
     macro_rules! pad {
@@ -169,12 +165,14 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
         };
     }
 
-    let header_style = style::Style::new().bold().with_font_size(12);
-    let row_style = style::Style::new().with_font_size(11);
-    let detail_style = style::Style::new().italic().with_font_size(9);
+    let header_style = style::Style::new().bold().with_font_size(10);
+    let row_style = style::Style::new().with_font_size(10);
+    let detail_style = style::Style::new().italic().with_font_size(8);
 
-    // we manually paginate to fix genpdf's broken borders at page boundaries
-    // and to repeat the header row on every page.
+    // column widths proportional: wider columns for text headers
+    let col_widths = vec![1, 3, 2, 2, 2, 2, 2];
+
+    // manually paginate to fix genpdf's broken borders at page boundaries
     let mut is_first_page = true;
     let mut current_idx = 0;
 
@@ -183,29 +181,31 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
             doc.push(genpdf::elements::PageBreak::new());
         }
 
-        let mut table = TableLayout::new(vec![1, 3, 3, 1, 1, 2, 1]);
+        let mut table = TableLayout::new(col_widths.clone());
         table.set_cell_decorator(genpdf::elements::FrameCellDecorator::new(true, true, false));
 
         // table header row
         let mut header_row = table.row();
         header_row.push_element(pad!(Paragraph::new("Rank").styled(header_style.clone())));
-        header_row.push_element(pad!(Paragraph::new("Name").styled(header_style.clone())));
         header_row.push_element(pad!(Paragraph::new("Handle").styled(header_style.clone())));
-        let contests_header = if include_details { "Contests" } else { "Contests Count" };
-        header_row.push_element(pad!(Paragraph::new(contests_header).styled(header_style.clone())));
+        header_row.push_element(pad!(Paragraph::new("Contests Count").styled(header_style.clone())));
         header_row.push_element(pad!(Paragraph::new("Solved").styled(header_style.clone())));
         header_row.push_element(pad!(Paragraph::new("Penalty").styled(header_style.clone())));
-        header_row.push_element(pad!(Paragraph::new("Upslv").styled(header_style.clone())));
+        header_row.push_element(pad!(Paragraph::new("Upsolved").styled(header_style.clone())));
+        header_row.push_element(pad!(Paragraph::new("Total Solved").styled(header_style.clone())));
         header_row.push().ok();
 
-        // 25 rows fit comfortably on the first page (with title), 36 rows fit on subsequent pages
+        // 25 rows fit on the first page (with title/header), 36 on subsequent pages
         let max_rows = if is_first_page { 25 } else { 36 };
-        let mut rendered_rows = 1; // header row is 1
+        let mut rendered_rows = 1; // header counts as 1
         let mut end_idx = current_idx;
 
         while end_idx < result.rankings.len() {
-            let p = &result.rankings[end_idx];
-            let participant_rows = if include_details { 1 + p.contest_details.len() } else { 1 };
+            let participant_rows = if include_details {
+                1 + result.rankings[end_idx].contest_details.len()
+            } else {
+                1
+            };
             if rendered_rows + participant_rows > max_rows {
                 if rendered_rows > 1 {
                     break;
@@ -216,37 +216,30 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
         }
 
         for p in &result.rankings[current_idx..end_idx] {
+            let total_solved = p.problems_solved + p.total_upsolved;
+
             let mut row = table.row();
             row.push_element(pad!(Paragraph::new(p.rank.to_string()).styled(row_style.clone())));
-            row.push_element(pad!(Paragraph::new(p.real_name.clone()).styled(row_style.clone())));
-            let handle_text = if include_details {
-                format!("{} (Total)", p.handle)
-            } else {
-                p.handle.clone()
-            };
-            row.push_element(pad!(Paragraph::new(handle_text).styled(row_style.clone())));
+            row.push_element(pad!(Paragraph::new(p.handle.clone()).styled(row_style.clone())));
             row.push_element(pad!(Paragraph::new(p.contests_participated.to_string()).styled(row_style.clone())));
             row.push_element(pad!(Paragraph::new(p.problems_solved.to_string()).styled(row_style.clone())));
             row.push_element(pad!(Paragraph::new(p.total_penalty.to_string()).styled(row_style.clone())));
             row.push_element(pad!(Paragraph::new(p.total_upsolved.to_string()).styled(row_style.clone())));
+            row.push_element(pad!(Paragraph::new(total_solved.to_string()).styled(row_style.clone())));
             row.push().ok();
 
             if include_details {
                 for detail in &p.contest_details {
+                    let detail_total = detail.solved + detail.upsolved;
                     let mut detail_row = table.row();
-                    detail_row.push_element(pad!(Paragraph::new("").styled(row_style.clone())));
                     detail_row.push_element(pad!(Paragraph::new("").styled(detail_style.clone())));
-                    
-                    let detail_handle = format!("  └─ {}", detail.contest_name);
-                    detail_row.push_element(pad!(Paragraph::new(detail_handle).styled(detail_style.clone())));
-                    
+                    detail_row.push_element(pad!(Paragraph::new(format!("  └─ {}", detail.contest_name)).styled(detail_style.clone())));
                     let part_val = if detail.participated { "1" } else { "0" };
                     detail_row.push_element(pad!(Paragraph::new(part_val).styled(detail_style.clone())));
-                    
                     detail_row.push_element(pad!(Paragraph::new(detail.solved.to_string()).styled(detail_style.clone())));
                     detail_row.push_element(pad!(Paragraph::new(detail.penalty.to_string()).styled(detail_style.clone())));
                     detail_row.push_element(pad!(Paragraph::new(detail.upsolved.to_string()).styled(detail_style.clone())));
-                    
+                    detail_row.push_element(pad!(Paragraph::new(detail_total.to_string()).styled(detail_style.clone())));
                     detail_row.push().ok();
                 }
             }
@@ -268,11 +261,11 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
             .styled(style::Style::new().italic().with_font_size(9)),
     );
 
-    doc.push(
-        Paragraph::new("Powered by SUST CP Geeks Platform")
-            .aligned(Alignment::Center)
-            .styled(style::Style::new().italic().with_font_size(9)),
-    );
+//    doc.push(
+//        Paragraph::new("Powered by SUST CP Geeks Platform")
+//            .aligned(Alignment::Center)
+//            .styled(style::Style::new().italic().with_font_size(9)),
+//    );
 
     // render to bytes
     let mut buf = Vec::new();
