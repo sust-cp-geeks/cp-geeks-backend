@@ -13,6 +13,12 @@ pub struct VjudgeContest {
     pub submissions: Vec<Vec<serde_json::Value>>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MergedHandle {
+    pub name: String,
+    pub handles: Vec<String>,
+}
+
 // --- ranker request ---
 
 #[derive(Debug, Deserialize)]
@@ -21,6 +27,7 @@ pub struct RankerRequest {
     pub contest_ids: Vec<u64>,
     pub problem_weights: Option<Vec<Option<Vec<f64>>>>,
     pub custom_titles: Option<Vec<String>>,
+    pub merged_handles: Option<Vec<MergedHandle>>,
 }
 
 // --- ranker response ---

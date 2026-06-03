@@ -237,12 +237,24 @@ pub async fn analyze(pool: &sqlx::PgPool, request: &RankerRequest) -> Result<Ran
         contest_results_list.push(contest_results);
     }
 
+    // Collect all merged constituent handles into a HashSet to filter them out of unique handles
+    let mut merged_constituent_handles = std::collections::HashSet::new();
+    if let Some(merges) = &request.merged_handles {
+        for merge in merges {
+            for h in &merge.handles {
+                merged_constituent_handles.insert(h.to_lowercase());
+            }
+        }
+    }
+
     // merge all participants across all contests
     // key = vjudge handle (lowercase for dedup), value = original handle
     let mut unique_handles: HashMap<String, String> = HashMap::new();
     for results in &contest_results_list {
         for (lowercase_handle, (original_handle, _)) in results {
-            unique_handles.insert(lowercase_handle.clone(), original_handle.clone());
+            if !merged_constituent_handles.contains(lowercase_handle) {
+                unique_handles.insert(lowercase_handle.clone(), original_handle.clone());
+            }
         }
     }
 
@@ -300,19 +312,72 @@ pub async fn analyze(pool: &sqlx::PgPool, request: &RankerRequest) -> Result<Ran
         ));
     }
 
-    // Fetch all users to map vjudge handles to real names
-    use sqlx::Row;
-    let db_users = sqlx::query("SELECT name, vjudge_handle FROM users WHERE vjudge_handle IS NOT NULL")
-        .fetch_all(pool)
-        .await
-        .map_err(|e| AppError::InternalError(format!("Failed to fetch users: {}", e)))?;
+    // Now process the merged handles
+    if let Some(merges) = &request.merged_handles {
+        for merge in merges {
+            let mut total_score = 0.0;
+            let mut total_solved = 0;
+            let mut total_upsolved = 0;
+            let mut total_penalty = 0;
+            let mut contests_participated = 0;
+            let mut details = Vec::new();
 
-    let mut handle_to_name: HashMap<String, String> = HashMap::new();
-    for row in db_users {
-        let name: String = row.get("name");
-        let vjudge_handle: Option<String> = row.get("vjudge_handle");
-        if let Some(handle) = vjudge_handle {
-            handle_to_name.insert(handle.to_lowercase(), name);
+            for (i, contest) in contests.iter().enumerate() {
+                let results = &contest_results_list[i];
+                let mut contest_solved = 0;
+                let mut contest_upsolved = 0;
+                let mut contest_penalty = 0;
+                let mut contest_score = 0.0;
+                let mut contest_participated = false;
+
+                for h in &merge.handles {
+                    let lowercase_h = h.to_lowercase();
+                    if let Some((_, res)) = results.get(&lowercase_h) {
+                        contest_solved += res.solved;
+                        contest_upsolved += res.upsolved;
+                        contest_penalty += res.penalty;
+                        contest_score += res.score;
+                        if res.participated {
+                            contest_participated = true;
+                        }
+                    }
+                }
+
+                let contest_title = request
+                    .custom_titles
+                    .as_ref()
+                    .and_then(|ct| ct.get(i))
+                    .filter(|t| !t.trim().is_empty())
+                    .cloned()
+                    .unwrap_or_else(|| contest.title.clone());
+
+                details.push(ContestResult {
+                    contest_name: contest_title,
+                    solved: contest_solved,
+                    upsolved: contest_upsolved,
+                    penalty: contest_penalty,
+                    score: contest_score,
+                    participated: contest_participated,
+                });
+
+                total_score += contest_score;
+                total_solved += contest_solved;
+                total_upsolved += contest_upsolved;
+                total_penalty += contest_penalty;
+                if contest_participated {
+                    contests_participated += 1;
+                }
+            }
+
+            participants.push((
+                merge.name.clone(),
+                total_score,
+                total_solved,
+                total_upsolved,
+                total_penalty,
+                contests_participated,
+                details,
+            ));
         }
     }
 

@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, State, Query};
 use axum::http::header;
 use axum::response::IntoResponse;
 use axum::Json;
@@ -52,10 +52,16 @@ pub async fn analyze(
     })))
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct PdfQuery {
+    pub include_details: Option<bool>,
+}
+
 // generate and download a branded pdf of the rankings
 pub async fn download_pdf(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
+    Query(query): Query<PdfQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     // look up cached result
     let result = {
@@ -67,7 +73,8 @@ pub async fn download_pdf(
         "Session not found — please run /analyze first".to_string(),
     ))?;
 
-    let pdf_bytes = generate_pdf(&result)?;
+    let include_details = query.include_details.unwrap_or(true);
+    let pdf_bytes = generate_pdf(&result, include_details)?;
 
     Ok((
         [
@@ -82,7 +89,7 @@ pub async fn download_pdf(
 }
 
 // builds a branded pdf document from the ranking results
-fn generate_pdf(result: &RankerResponse) -> Result<Vec<u8>, AppError> {
+fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8>, AppError> {
     use genpdf::elements::{Paragraph, TableLayout};
     use genpdf::{style, Alignment, Element as _};
 
@@ -164,6 +171,7 @@ fn generate_pdf(result: &RankerResponse) -> Result<Vec<u8>, AppError> {
 
     let header_style = style::Style::new().bold().with_font_size(12);
     let row_style = style::Style::new().with_font_size(11);
+    let detail_style = style::Style::new().italic().with_font_size(9);
 
     // we manually paginate to fix genpdf's broken borders at page boundaries
     // and to repeat the header row on every page.
@@ -183,26 +191,63 @@ fn generate_pdf(result: &RankerResponse) -> Result<Vec<u8>, AppError> {
         header_row.push_element(pad!(Paragraph::new("Rank").styled(header_style.clone())));
         header_row.push_element(pad!(Paragraph::new("Name").styled(header_style.clone())));
         header_row.push_element(pad!(Paragraph::new("Handle").styled(header_style.clone())));
-        header_row.push_element(pad!(Paragraph::new("Cnts").styled(header_style.clone())));
-        header_row.push_element(pad!(Paragraph::new("Slv").styled(header_style.clone())));
+        let contests_header = if include_details { "Contests" } else { "Contests Count" };
+        header_row.push_element(pad!(Paragraph::new(contests_header).styled(header_style.clone())));
+        header_row.push_element(pad!(Paragraph::new("Solved").styled(header_style.clone())));
         header_row.push_element(pad!(Paragraph::new("Penalty").styled(header_style.clone())));
         header_row.push_element(pad!(Paragraph::new("Upslv").styled(header_style.clone())));
         header_row.push().ok();
 
         // 25 rows fit comfortably on the first page (with title), 36 rows fit on subsequent pages
-        let chunk_size = if is_first_page { 25 } else { 36 };
-        let end_idx = (current_idx + chunk_size).min(result.rankings.len());
+        let max_rows = if is_first_page { 25 } else { 36 };
+        let mut rendered_rows = 1; // header row is 1
+        let mut end_idx = current_idx;
+
+        while end_idx < result.rankings.len() {
+            let p = &result.rankings[end_idx];
+            let participant_rows = if include_details { 1 + p.contest_details.len() } else { 1 };
+            if rendered_rows + participant_rows > max_rows {
+                if rendered_rows > 1 {
+                    break;
+                }
+            }
+            rendered_rows += participant_rows;
+            end_idx += 1;
+        }
 
         for p in &result.rankings[current_idx..end_idx] {
             let mut row = table.row();
             row.push_element(pad!(Paragraph::new(p.rank.to_string()).styled(row_style.clone())));
-            row.push_element(pad!(Paragraph::new(&p.real_name).styled(row_style.clone())));
-            row.push_element(pad!(Paragraph::new(&p.handle).styled(row_style.clone())));
+            let handle_text = if include_details {
+                format!("{} (Total)", p.handle)
+            } else {
+                p.handle.clone()
+            };
+            row.push_element(pad!(Paragraph::new(handle_text).styled(row_style.clone())));
             row.push_element(pad!(Paragraph::new(p.contests_participated.to_string()).styled(row_style.clone())));
             row.push_element(pad!(Paragraph::new(p.problems_solved.to_string()).styled(row_style.clone())));
             row.push_element(pad!(Paragraph::new(p.total_penalty.to_string()).styled(row_style.clone())));
             row.push_element(pad!(Paragraph::new(p.total_upsolved.to_string()).styled(row_style.clone())));
             row.push().ok();
+
+            if include_details {
+                for detail in &p.contest_details {
+                    let mut detail_row = table.row();
+                    detail_row.push_element(pad!(Paragraph::new("").styled(row_style.clone())));
+                    
+                    let detail_handle = format!("  └─ {}", detail.contest_name);
+                    detail_row.push_element(pad!(Paragraph::new(detail_handle).styled(detail_style.clone())));
+                    
+                    let part_val = if detail.participated { "1" } else { "0" };
+                    detail_row.push_element(pad!(Paragraph::new(part_val).styled(detail_style.clone())));
+                    
+                    detail_row.push_element(pad!(Paragraph::new(detail.solved.to_string()).styled(detail_style.clone())));
+                    detail_row.push_element(pad!(Paragraph::new(detail.penalty.to_string()).styled(detail_style.clone())));
+                    detail_row.push_element(pad!(Paragraph::new(detail.upsolved.to_string()).styled(detail_style.clone())));
+                    
+                    detail_row.push().ok();
+                }
+            }
         }
 
         doc.push(table);
