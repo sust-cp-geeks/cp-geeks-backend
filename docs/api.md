@@ -792,7 +792,14 @@ Analyze one or more VJudge contests and produce a ranked leaderboard. Fetches co
 {
   "title": "TFC Season 1 Final Standings",
   "contest_ids": [811682, 811683],
-  "problem_weights": [[100, 200, 300, 400, 500, 600, 700], null]
+  "problem_weights": [[100, 200, 300, 400, 500, 600, 700], null],
+  "custom_titles": ["TFC Round 1", "TFC Round 2"],
+  "merged_handles": [
+    {
+      "name": "Soccho Merged",
+      "handles": ["Soccho_27", "2021331027"]
+    }
+  ]
 }
 ```
 
@@ -801,6 +808,8 @@ Analyze one or more VJudge contests and produce a ranked leaderboard. Fetches co
 | `title` | string | Yes | Name for the result set (appears on PDF) |
 | `contest_ids` | array of integers | Yes | VJudge contest IDs to analyze |
 | `problem_weights` | array or null | No | Per-contest problem weights. `null` = all equal weight (1.0). Each entry can be an array of weights or `null`. |
+| `custom_titles` | array of strings | No | Optional names to override the default VJudge contest titles. |
+| `merged_handles` | array of objects | No | Optional list to merge multiple VJudge accounts into one participant. Each object requires `name` (string) and `handles` (array of strings). |
 
 **Success (200):**
 ```json
@@ -814,24 +823,16 @@ Analyze one or more VJudge contests and produce a ranked leaderboard. Fetches co
     "rankings": [
       {
         "rank": 1,
-        "handle": "user_alpha",
+        "real_name": "Rafid Bin Nasim Soccho",
+        "handle": "Soccho_27,2021331027",
         "total_score": 11.0,
         "problems_solved": 11,
+        "total_upsolved": 2,
         "total_penalty": 162,
+        "contests_participated": 2,
         "contest_details": [
-          { "contest_name": "Contest Round 1", "solved": 6, "penalty": 81, "score": 6.0 },
-          { "contest_name": "Contest Round 2", "solved": 5, "penalty": 81, "score": 5.0 }
-        ]
-      },
-      {
-        "rank": 2,
-        "handle": "user_beta",
-        "total_score": 9.0,
-        "problems_solved": 9,
-        "total_penalty": 120,
-        "contest_details": [
-          { "contest_name": "Contest Round 1", "solved": 5, "penalty": 60, "score": 5.0 },
-          { "contest_name": "Contest Round 2", "solved": 4, "penalty": 60, "score": 4.0 }
+          { "contest_name": "TFC Round 1", "solved": 6, "upsolved": 1, "penalty": 81, "score": 6.0, "participated": true },
+          { "contest_name": "TFC Round 2", "solved": 5, "upsolved": 1, "penalty": 81, "score": 5.0, "participated": true }
         ]
       }
     ]
@@ -840,12 +841,12 @@ Analyze one or more VJudge contests and produce a ranked leaderboard. Fetches co
 ```
 
 **Ranking algorithm (ICPC-style):**
-1. Sort by `total_score` DESC (higher is better)
+1. Sort by `problems_solved` DESC (higher is better)
 2. Then by `total_penalty` ASC (lower is better)
-3. Then by `problems_solved` DESC (tiebreaker)
-4. Equal score + penalty = same rank
+3. Then by `total_upsolved` DESC (tiebreaker)
+4. Equal solved + penalty + upsolved = same rank
 
-**Penalty formula:** `solve_time_minutes + (20 * wrong_attempts_before_AC)`
+**Penalty formula (Sum Seconds First):** `floor(sum_of_solve_time_seconds / 60) + (20 * total_wrong_attempts_before_AC)`
 
 **Errors:**
 - `400` — Empty title or empty contest_ids
@@ -860,13 +861,14 @@ Download a branded PDF of the ranking results.
 **Access:** Public (no token required)
 
 **URL Params:** `session_id` (string) — returned from the `/analyze` endpoint
+**Query Params:** `?include_details=true|false` (boolean) — include individual contest details as nested rows
 
 **Response:** `Content-Type: application/pdf`
 
 The PDF contains:
 - "SUST CP Geeks" header
 - Custom title from the analyze request
-- Table: Rank | Handle | Score | Solved | Penalty
+- Table: `Rank | Handle | Contests Count | Solved | Penalty | Upsolved | Total Solved`
 - Generation date footer
 
 **Errors:**

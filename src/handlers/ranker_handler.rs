@@ -220,7 +220,22 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
 
             let mut row = table.row();
             row.push_element(pad!(Paragraph::new(p.rank.to_string()).styled(row_style.clone())));
-            row.push_element(pad!(Paragraph::new(p.handle.clone()).styled(row_style.clone())));
+            // for merged handles (comma-separated), render each on its own line
+            if p.handle.contains(',') {
+                let handles: Vec<&str> = p.handle.split(',').collect();
+                let mut layout = genpdf::elements::LinearLayout::vertical();
+                for (i, h) in handles.iter().enumerate() {
+                    let text = if i < handles.len() - 1 {
+                        format!("{} ,", h.trim())
+                    } else {
+                        h.trim().to_string()
+                    };
+                    layout.push(Paragraph::new(text).styled(row_style.clone()));
+                }
+                row.push_element(pad!(layout));
+            } else {
+                row.push_element(pad!(Paragraph::new(p.handle.clone()).styled(row_style.clone())));
+            }
             row.push_element(pad!(Paragraph::new(p.contests_participated.to_string()).styled(row_style.clone())));
             row.push_element(pad!(Paragraph::new(p.problems_solved.to_string()).styled(row_style.clone())));
             row.push_element(pad!(Paragraph::new(p.total_penalty.to_string()).styled(row_style.clone())));

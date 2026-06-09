@@ -104,7 +104,7 @@ src/
 │   ├── email.rs                 # OTP + password reset emails via Resend API
 │   ├── codeforces.rs            # CF API client (validate, fetch, aggregate)
 │   ├── vjudge.rs                # VJudge contest data fetcher
-│   └── ranker.rs                # ICPC ranking algorithm + multi-contest merge
+│   └── ranker.rs                # ICPC ranking (Sum Seconds First) + multi-contest handle merge
 ├── middleware/
 │   └── auth_middleware.rs       # JWT claims extractor
 ├── routes/                      # route definitions per resource
