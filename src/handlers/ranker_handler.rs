@@ -1,4 +1,4 @@
-use axum::extract::{Path, State, Query};
+use axum::extract::{Path, Query, State};
 use axum::http::header;
 use axum::response::IntoResponse;
 use axum::Json;
@@ -10,9 +10,7 @@ use crate::models::ranker::{RankerRequest, RankerResponse};
 use crate::services::ranker;
 
 // fetch contest title from vjudge
-pub async fn get_contest_title(
-    Path(id): Path<u64>,
-) -> Result<Json<Value>, AppError> {
+pub async fn get_contest_title(Path(id): Path<u64>) -> Result<Json<Value>, AppError> {
     let contest = crate::services::vjudge::fetch_contest(id).await?;
     Ok(Json(json!({
         "success": true,
@@ -90,7 +88,7 @@ pub async fn download_pdf(
 
 // builds a branded pdf document from the ranking results
 fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8>, AppError> {
-    use genpdf::elements::{Paragraph, PaddedElement, TableLayout};
+    use genpdf::elements::{PaddedElement, Paragraph, TableLayout};
     use genpdf::{style, Alignment, Element as _};
 
     let font_family = genpdf::fonts::from_files("./fonts", "LiberationSans", None)
@@ -188,11 +186,15 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
         let mut header_row = table.row();
         header_row.push_element(pad!(Paragraph::new("Rank").styled(header_style.clone())));
         header_row.push_element(pad!(Paragraph::new("Handle").styled(header_style.clone())));
-        header_row.push_element(pad!(Paragraph::new("Contests Count").styled(header_style.clone())));
+        header_row.push_element(pad!(
+            Paragraph::new("Contests Count").styled(header_style.clone())
+        ));
         header_row.push_element(pad!(Paragraph::new("Solved").styled(header_style.clone())));
         header_row.push_element(pad!(Paragraph::new("Penalty").styled(header_style.clone())));
         header_row.push_element(pad!(Paragraph::new("Upsolved").styled(header_style.clone())));
-        header_row.push_element(pad!(Paragraph::new("Total Solved").styled(header_style.clone())));
+        header_row.push_element(pad!(
+            Paragraph::new("Total Solved").styled(header_style.clone())
+        ));
         header_row.push().ok();
 
         // 25 rows fit on the first page (with title/header), 36 on subsequent pages
@@ -219,7 +221,9 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
             let total_solved = p.problems_solved + p.total_upsolved;
 
             let mut row = table.row();
-            row.push_element(pad!(Paragraph::new(p.rank.to_string()).styled(row_style.clone())));
+            row.push_element(pad!(
+                Paragraph::new(p.rank.to_string()).styled(row_style.clone())
+            ));
             // for merged handles (comma-separated), render each on its own line
             if p.handle.contains(',') {
                 let handles: Vec<&str> = p.handle.split(',').collect();
@@ -234,13 +238,25 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
                 }
                 row.push_element(pad!(layout));
             } else {
-                row.push_element(pad!(Paragraph::new(p.handle.clone()).styled(row_style.clone())));
+                row.push_element(pad!(
+                    Paragraph::new(p.handle.clone()).styled(row_style.clone())
+                ));
             }
-            row.push_element(pad!(Paragraph::new(p.contests_participated.to_string()).styled(row_style.clone())));
-            row.push_element(pad!(Paragraph::new(p.problems_solved.to_string()).styled(row_style.clone())));
-            row.push_element(pad!(Paragraph::new(p.total_penalty.to_string()).styled(row_style.clone())));
-            row.push_element(pad!(Paragraph::new(p.total_upsolved.to_string()).styled(row_style.clone())));
-            row.push_element(pad!(Paragraph::new(total_solved.to_string()).styled(row_style.clone())));
+            row.push_element(pad!(
+                Paragraph::new(p.contests_participated.to_string()).styled(row_style.clone())
+            ));
+            row.push_element(pad!(
+                Paragraph::new(p.problems_solved.to_string()).styled(row_style.clone())
+            ));
+            row.push_element(pad!(
+                Paragraph::new(p.total_penalty.to_string()).styled(row_style.clone())
+            ));
+            row.push_element(pad!(
+                Paragraph::new(p.total_upsolved.to_string()).styled(row_style.clone())
+            ));
+            row.push_element(pad!(
+                Paragraph::new(total_solved.to_string()).styled(row_style.clone())
+            ));
             row.push().ok();
 
             if include_details {
@@ -248,13 +264,26 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
                     let detail_total = detail.solved + detail.upsolved;
                     let mut detail_row = table.row();
                     detail_row.push_element(pad!(Paragraph::new("").styled(detail_style.clone())));
-                    detail_row.push_element(pad!(Paragraph::new(format!("  └─ {}", detail.contest_name)).styled(detail_style.clone())));
+                    detail_row.push_element(pad!(Paragraph::new(format!(
+                        "  └─ {}",
+                        detail.contest_name
+                    ))
+                    .styled(detail_style.clone())));
                     let part_val = if detail.participated { "1" } else { "0" };
-                    detail_row.push_element(pad!(Paragraph::new(part_val).styled(detail_style.clone())));
-                    detail_row.push_element(pad!(Paragraph::new(detail.solved.to_string()).styled(detail_style.clone())));
-                    detail_row.push_element(pad!(Paragraph::new(detail.penalty.to_string()).styled(detail_style.clone())));
-                    detail_row.push_element(pad!(Paragraph::new(detail.upsolved.to_string()).styled(detail_style.clone())));
-                    detail_row.push_element(pad!(Paragraph::new(detail_total.to_string()).styled(detail_style.clone())));
+                    detail_row
+                        .push_element(pad!(Paragraph::new(part_val).styled(detail_style.clone())));
+                    detail_row.push_element(pad!(
+                        Paragraph::new(detail.solved.to_string()).styled(detail_style.clone())
+                    ));
+                    detail_row.push_element(pad!(
+                        Paragraph::new(detail.penalty.to_string()).styled(detail_style.clone())
+                    ));
+                    detail_row
+                        .push_element(pad!(Paragraph::new(detail.upsolved.to_string())
+                            .styled(detail_style.clone())));
+                    detail_row.push_element(pad!(
+                        Paragraph::new(detail_total.to_string()).styled(detail_style.clone())
+                    ));
                     detail_row.push().ok();
                 }
             }
@@ -276,11 +305,11 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
             .styled(style::Style::new().italic().with_font_size(9)),
     );
 
-//    doc.push(
-//        Paragraph::new("Powered by SUST CP Geeks Platform")
-//            .aligned(Alignment::Center)
-//            .styled(style::Style::new().italic().with_font_size(9)),
-//    );
+    //    doc.push(
+    //        Paragraph::new("Powered by SUST CP Geeks Platform")
+    //            .aligned(Alignment::Center)
+    //            .styled(style::Style::new().italic().with_font_size(9)),
+    //    );
 
     // render to bytes
     let mut buf = Vec::new();

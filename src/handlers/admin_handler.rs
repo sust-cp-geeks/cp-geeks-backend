@@ -156,9 +156,7 @@ pub async fn admin_ban_user(
 
     // safety measure to stop admins locking themselves out
     if claims.user_id == id {
-        return Err(AppError::BadRequest(
-            "You cannot ban yourself".to_string(),
-        ));
+        return Err(AppError::BadRequest("You cannot ban yourself".to_string()));
     }
 
     let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE user_id = $1")

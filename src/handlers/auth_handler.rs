@@ -33,8 +33,11 @@ pub async fn register(
     validate_string(&body.reg_number, "Registration number", 5, 50)?;
     validate_string(&body.password, "Password", 6, 255)?;
     validate_email(&body.email)?;
-    
-    let cf_handle = body.codeforces_handle.as_deref().filter(|h| !h.trim().is_empty());
+
+    let cf_handle = body
+        .codeforces_handle
+        .as_deref()
+        .filter(|h| !h.trim().is_empty());
     if let Some(handle) = cf_handle {
         validate_string(handle, "Codeforces handle", 1, 50)?;
         // validate the codeforces handle exists on codeforces.com
@@ -138,12 +141,10 @@ pub async fn resend_otp_handler(
     validate_email(&body.email)?;
 
     // make sure the user exists and is still pending verification
-    let status = sqlx::query_scalar::<_, String>(
-        "SELECT status FROM users WHERE email = $1",
-    )
-    .bind(&body.email)
-    .fetch_optional(&state.pool)
-    .await?;
+    let status = sqlx::query_scalar::<_, String>("SELECT status FROM users WHERE email = $1")
+        .bind(&body.email)
+        .fetch_optional(&state.pool)
+        .await?;
 
     match status.as_deref() {
         Some("pending_verification") => {
@@ -155,7 +156,9 @@ pub async fn resend_otp_handler(
             ));
         }
         None => {
-            return Err(AppError::NotFound("No account found with this email".to_string()));
+            return Err(AppError::NotFound(
+                "No account found with this email".to_string(),
+            ));
         }
     }
 
@@ -219,8 +222,13 @@ pub async fn login(
     }
 
     // generate jwt token
-    let token = create_token(user.user_id, &user.email, user.is_admin.unwrap_or(false), user.is_manager.unwrap_or(false))
-        .map_err(|e| AppError::InternalError(e))?;
+    let token = create_token(
+        user.user_id,
+        &user.email,
+        user.is_admin.unwrap_or(false),
+        user.is_manager.unwrap_or(false),
+    )
+    .map_err(|e| AppError::InternalError(e))?;
 
     Ok(Json(json!({
         "success": true,

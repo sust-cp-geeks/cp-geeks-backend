@@ -117,11 +117,9 @@ pub async fn get_events(
     _claims: Claims,
     State(state): State<AppState>,
 ) -> Result<Json<Value>, AppError> {
-    let events = sqlx::query_as::<_, Event>(
-        "SELECT * FROM events ORDER BY event_date ASC",
-    )
-    .fetch_all(&state.pool)
-    .await?;
+    let events = sqlx::query_as::<_, Event>("SELECT * FROM events ORDER BY event_date ASC")
+        .fetch_all(&state.pool)
+        .await?;
 
     let response = build_event_responses(&state.pool, events).await?;
 
@@ -138,12 +136,10 @@ pub async fn get_event(
     State(state): State<AppState>,
     Path(id): Path<i32>,
 ) -> Result<Json<Value>, AppError> {
-    let event = sqlx::query_as::<_, Event>(
-        "SELECT * FROM events WHERE event_id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.pool)
-    .await?;
+    let event = sqlx::query_as::<_, Event>("SELECT * FROM events WHERE event_id = $1")
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?;
 
     let event = event.ok_or(AppError::NotFound("Event not found".to_string()))?;
 
@@ -163,8 +159,8 @@ pub async fn create_event(
 
     validate_string(&body.description, "Description", 1, 10000)?;
 
-    let event_date = NaiveDateTime::parse_from_str(&body.event_date, "%Y-%m-%dT%H:%M:%S")
-        .map_err(|_| {
+    let event_date =
+        NaiveDateTime::parse_from_str(&body.event_date, "%Y-%m-%dT%H:%M:%S").map_err(|_| {
             AppError::BadRequest(
                 "Invalid event_date format (expected YYYY-MM-DDTHH:MM:SS)".to_string(),
             )
@@ -199,12 +195,10 @@ pub async fn update_event(
 ) -> Result<Json<Value>, AppError> {
     require_admin_or_manager(&claims)?;
 
-    let existing = sqlx::query_as::<_, Event>(
-        "SELECT * FROM events WHERE event_id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.pool)
-    .await?;
+    let existing = sqlx::query_as::<_, Event>("SELECT * FROM events WHERE event_id = $1")
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?;
 
     let existing = existing.ok_or(AppError::NotFound("Event not found".to_string()))?;
 
@@ -217,10 +211,10 @@ pub async fn update_event(
         })?,
         None => existing.event_date,
     };
-    
+
     // new_vjudge_contest_ids logic
-    // if body provides Some, use it (even if Some(empty_vec)), else keep existing. 
-    // Wait, since `Option<Vec<i64>>` in `UpdateEventInput` means if it's missing from JSON it's `None`. 
+    // if body provides Some, use it (even if Some(empty_vec)), else keep existing.
+    // Wait, since `Option<Vec<i64>>` in `UpdateEventInput` means if it's missing from JSON it's `None`.
     // If they want to clear it, they'd send `Some(vec![])`.
     let new_vjudge_contest_ids = body.vjudge_contest_ids.or(existing.vjudge_contest_ids);
 

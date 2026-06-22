@@ -43,7 +43,9 @@ pub async fn validate_handle(handle: &str) -> Result<CfUserInfo, AppError> {
         })?;
 
     if body.status != "OK" {
-        let msg = body.comment.unwrap_or_else(|| "Handle not found".to_string());
+        let msg = body
+            .comment
+            .unwrap_or_else(|| "Handle not found".to_string());
         return Err(AppError::BadRequest(format!(
             "Invalid Codeforces handle: {}",
             msg
@@ -51,7 +53,13 @@ pub async fn validate_handle(handle: &str) -> Result<CfUserInfo, AppError> {
     }
 
     body.result
-        .and_then(|mut users| if users.is_empty() { None } else { Some(users.remove(0)) })
+        .and_then(|mut users| {
+            if users.is_empty() {
+                None
+            } else {
+                Some(users.remove(0))
+            }
+        })
         .ok_or_else(|| AppError::BadRequest("Codeforces handle not found".to_string()))
 }
 
@@ -97,10 +105,7 @@ async fn fetch_rating_history(handle: &str) -> Result<Vec<CfRatingChange>, AppEr
 
 // counts solved problems by difficulty bucket within a time window
 // only counts unique accepted problems (deduplicates by contest_id + index)
-fn count_solves_by_bucket(
-    submissions: &[CfSubmission],
-    after_timestamp: i64,
-) -> SolveCountPeriod {
+fn count_solves_by_bucket(submissions: &[CfSubmission], after_timestamp: i64) -> SolveCountPeriod {
     let mut seen = std::collections::HashSet::new();
     let mut bucket_counts: BTreeMap<String, usize> = BTreeMap::new();
 

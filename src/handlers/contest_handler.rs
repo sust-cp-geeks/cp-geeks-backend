@@ -17,11 +17,9 @@ pub async fn get_contests(
     _claims: Claims,
     State(state): State<AppState>,
 ) -> Result<Json<Value>, AppError> {
-    let contests = sqlx::query_as::<_, Contest>(
-        "SELECT * FROM contests ORDER BY created_at DESC",
-    )
-    .fetch_all(&state.pool)
-    .await?;
+    let contests = sqlx::query_as::<_, Contest>("SELECT * FROM contests ORDER BY created_at DESC")
+        .fetch_all(&state.pool)
+        .await?;
 
     Ok(Json(json!({
         "success": true,
@@ -36,12 +34,10 @@ pub async fn get_contest(
     State(state): State<AppState>,
     Path(id): Path<i32>,
 ) -> Result<Json<Value>, AppError> {
-    let contest = sqlx::query_as::<_, Contest>(
-        "SELECT * FROM contests WHERE contest_no = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.pool)
-    .await?;
+    let contest = sqlx::query_as::<_, Contest>("SELECT * FROM contests WHERE contest_no = $1")
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?;
 
     let contest = contest.ok_or(AppError::NotFound("Contest not found".to_string()))?;
 
@@ -60,9 +56,10 @@ pub async fn create_contest(
     validate_string(&body.contest_link, "Contest link", 1, 255)?;
     validate_url(&body.contest_link, "Contest link")?;
 
-    let contest_date = body.contest_date.as_ref().and_then(|d| {
-        NaiveDateTime::parse_from_str(d, "%Y-%m-%dT%H:%M:%S").ok()
-    });
+    let contest_date = body
+        .contest_date
+        .as_ref()
+        .and_then(|d| NaiveDateTime::parse_from_str(d, "%Y-%m-%dT%H:%M:%S").ok());
 
     let contest = sqlx::query_as::<_, Contest>(
         r#"INSERT INTO contests (title, contest_link, contest_date)
@@ -93,12 +90,10 @@ pub async fn update_contest(
 ) -> Result<Json<Value>, AppError> {
     require_admin(&claims)?;
 
-    let existing = sqlx::query_as::<_, Contest>(
-        "SELECT * FROM contests WHERE contest_no = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.pool)
-    .await?;
+    let existing = sqlx::query_as::<_, Contest>("SELECT * FROM contests WHERE contest_no = $1")
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?;
 
     let existing = existing.ok_or(AppError::NotFound("Contest not found".to_string()))?;
 

@@ -11,7 +11,12 @@ pub struct Claims {
 }
 
 // helper to create a jwt token for a user that expires in 7 days
-pub fn create_token(user_id: i32, email: &str, is_admin: bool, is_manager: bool) -> Result<String, String> {
+pub fn create_token(
+    user_id: i32,
+    email: &str,
+    is_admin: bool,
+    is_manager: bool,
+) -> Result<String, String> {
     let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
 
     let expiry = chrono::Utc::now()

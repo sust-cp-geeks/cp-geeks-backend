@@ -83,7 +83,9 @@ pub fn require_admin(claims: &crate::utils::jwt::Claims) -> Result<(), AppError>
 // helper: require the user to be an admin or manager
 pub fn require_admin_or_manager(claims: &crate::utils::jwt::Claims) -> Result<(), AppError> {
     if !claims.is_admin && !claims.is_manager.unwrap_or(false) {
-        return Err(AppError::Forbidden("Admin or Manager access required".to_string()));
+        return Err(AppError::Forbidden(
+            "Admin or Manager access required".to_string(),
+        ));
     }
     Ok(())
 }
