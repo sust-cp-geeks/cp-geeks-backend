@@ -23,7 +23,11 @@ fn process_contest(
     // build user_id -> handle mapping
     let mut id_to_handle: HashMap<String, String> = HashMap::new();
     for (uid, info) in &contest.participants {
-        if let Some(arr) = info.as_array() {
+        if let Some(obj) = info.as_object() {
+            if let Some(handle) = obj.get("name").and_then(|v| v.as_str()) {
+                id_to_handle.insert(uid.clone(), handle.to_string());
+            }
+        } else if let Some(arr) = info.as_array() {
             if let Some(handle) = arr.first().and_then(|v| v.as_str()) {
                 id_to_handle.insert(uid.clone(), handle.to_string());
             }
