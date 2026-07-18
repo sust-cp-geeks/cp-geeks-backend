@@ -27,6 +27,10 @@ fn process_contest(
             if let Some(handle) = arr.first().and_then(|v| v.as_str()) {
                 id_to_handle.insert(uid.clone(), handle.to_string());
             }
+        } else if let Some(obj) = info.as_object() {
+            if let Some(handle) = obj.get("name").and_then(|v| v.as_str()) {
+                id_to_handle.insert(uid.clone(), handle.to_string());
+            }
         }
     }
 

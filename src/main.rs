@@ -52,9 +52,11 @@ async fn main() {
         .with_state(state)
         .layer(cors);
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:8080")
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .unwrap();
-    tracing::info!("server running at http://localhost:8080");
+    tracing::info!("server running at http://{}", addr);
     axum::serve(listener, app).await.unwrap();
 }
