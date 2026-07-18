@@ -67,7 +67,8 @@ Create a new account. Sends a 6-digit OTP to the provided email.
   "name": "Niloy Chandra Deb",
   "email": "2021331083@student.sust.edu",
   "password": "test123456",
-  "codeforces_handle": "Unga_Bunga"
+  "codeforces_handle": "Unga_Bunga",
+  "vjudge_handle": "neel_vj"
 }
 ```
 
@@ -78,6 +79,7 @@ Create a new account. Sends a 6-digit OTP to the provided email.
 | `email` | string | Yes | Must be valid email format |
 | `password` | string | Yes | 6-255 characters |
 | `codeforces_handle` | string | Yes | Validated against Codeforces API |
+| `vjudge_handle` | string | Yes | VJudge username |
 
 **Success (201):**
 ```json

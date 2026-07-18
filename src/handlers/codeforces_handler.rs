@@ -1,4 +1,7 @@
-use axum::{extract::{Path, State}, Json};
+use axum::{
+    extract::{Path, State},
+    Json,
+};
 use serde_json::{json, Value};
 
 use crate::app_state::AppState;
@@ -14,12 +17,11 @@ pub async fn get_cf_stats(
     Path(user_id): Path<i32>,
 ) -> Result<Json<Value>, AppError> {
     // look up the user's cf handle from our database
-    let handle = sqlx::query_scalar::<_, String>(
-        "SELECT codeforces_handle FROM users WHERE user_id = $1",
-    )
-    .bind(user_id)
-    .fetch_optional(&state.pool)
-    .await?;
+    let handle =
+        sqlx::query_scalar::<_, String>("SELECT codeforces_handle FROM users WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_optional(&state.pool)
+            .await?;
 
     let handle = handle.ok_or(AppError::NotFound(
         "User not found or has no Codeforces handle".to_string(),
@@ -96,7 +98,9 @@ pub async fn get_leaderboard(
 
     for (user_id, name, handle) in &rows {
         match rating_map.get(&handle.to_lowercase()) {
-            Some((Some(r), rank_opt)) => rated.push((*user_id, name.clone(), handle.clone(), *r, rank_opt.clone())),
+            Some((Some(r), rank_opt)) => {
+                rated.push((*user_id, name.clone(), handle.clone(), *r, rank_opt.clone()))
+            }
             _ => unrated.push((*user_id, name.clone(), handle.clone())),
         }
     }
@@ -108,14 +112,16 @@ pub async fn get_leaderboard(
     let mut leaderboard: Vec<LeaderboardEntry> = rated
         .into_iter()
         .enumerate()
-        .map(|(i, (user_id, name, handle, rating, rank_opt))| LeaderboardEntry {
-            rank: (i + 1) as i32,
-            user_id,
-            name,
-            codeforces_handle: handle,
-            current_rating: Some(rating),
-            current_rank: rank_opt,
-        })
+        .map(
+            |(i, (user_id, name, handle, rating, rank_opt))| LeaderboardEntry {
+                rank: (i + 1) as i32,
+                user_id,
+                name,
+                codeforces_handle: handle,
+                current_rating: Some(rating),
+                current_rank: rank_opt,
+            },
+        )
         .collect();
 
     // all unrated users share the same last rank

@@ -26,9 +26,7 @@ pub fn validate_string(
 // validate email has basic structure
 pub fn validate_email(email: &str) -> Result<(), AppError> {
     if !email.contains('@') || !email.contains('.') {
-        return Err(AppError::BadRequest(
-            "Invalid email format".to_string(),
-        ));
+        return Err(AppError::BadRequest("Invalid email format".to_string()));
     }
     Ok(())
 }

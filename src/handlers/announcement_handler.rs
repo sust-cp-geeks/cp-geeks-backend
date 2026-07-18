@@ -17,11 +17,10 @@ pub async fn get_announcements(
     _claims: Claims,
     State(state): State<AppState>,
 ) -> Result<Json<Value>, AppError> {
-    let announcements = sqlx::query_as::<_, Announcement>(
-        "SELECT * FROM announcements ORDER BY created_at DESC",
-    )
-    .fetch_all(&state.pool)
-    .await?;
+    let announcements =
+        sqlx::query_as::<_, Announcement>("SELECT * FROM announcements ORDER BY created_at DESC")
+            .fetch_all(&state.pool)
+            .await?;
 
     Ok(Json(json!({
         "success": true,
@@ -36,12 +35,11 @@ pub async fn get_announcement(
     State(state): State<AppState>,
     Path(id): Path<i32>,
 ) -> Result<Json<Value>, AppError> {
-    let announcement = sqlx::query_as::<_, Announcement>(
-        "SELECT * FROM announcements WHERE post_id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.pool)
-    .await?;
+    let announcement =
+        sqlx::query_as::<_, Announcement>("SELECT * FROM announcements WHERE post_id = $1")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?;
 
     let announcement =
         announcement.ok_or(AppError::NotFound("Announcement not found".to_string()))?;
@@ -60,9 +58,10 @@ pub async fn create_announcement(
     validate_string(&body.title, "Title", 1, 255)?;
     validate_string(&body.content, "Content", 1, 10000)?;
 
-    let event_date = body.event_date.as_ref().and_then(|d| {
-        NaiveDateTime::parse_from_str(d, "%Y-%m-%dT%H:%M:%S").ok()
-    });
+    let event_date = body
+        .event_date
+        .as_ref()
+        .and_then(|d| NaiveDateTime::parse_from_str(d, "%Y-%m-%dT%H:%M:%S").ok());
 
     let announcement = sqlx::query_as::<_, Announcement>(
         r#"INSERT INTO announcements (author_id, title, content, category, event_date)
@@ -95,15 +94,13 @@ pub async fn update_announcement(
 ) -> Result<Json<Value>, AppError> {
     require_admin(&claims)?;
 
-    let existing = sqlx::query_as::<_, Announcement>(
-        "SELECT * FROM announcements WHERE post_id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.pool)
-    .await?;
-
     let existing =
-        existing.ok_or(AppError::NotFound("Announcement not found".to_string()))?;
+        sqlx::query_as::<_, Announcement>("SELECT * FROM announcements WHERE post_id = $1")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?;
+
+    let existing = existing.ok_or(AppError::NotFound("Announcement not found".to_string()))?;
 
     let new_title = body.title.unwrap_or(existing.title);
     let new_content = body.content.unwrap_or(existing.content);

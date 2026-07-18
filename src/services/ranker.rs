@@ -23,7 +23,11 @@ fn process_contest(
     // build user_id -> handle mapping
     let mut id_to_handle: HashMap<String, String> = HashMap::new();
     for (uid, info) in &contest.participants {
-        if let Some(arr) = info.as_array() {
+        if let Some(obj) = info.as_object() {
+            if let Some(handle) = obj.get("name").and_then(|v| v.as_str()) {
+                id_to_handle.insert(uid.clone(), handle.to_string());
+            }
+        } else if let Some(arr) = info.as_array() {
             if let Some(handle) = arr.first().and_then(|v| v.as_str()) {
                 id_to_handle.insert(uid.clone(), handle.to_string());
             }
@@ -98,18 +102,16 @@ fn process_contest(
             *entry = true;
         }
 
-        let problems = user_problems
-            .entry(uid.clone())
-            .or_insert_with(|| {
-                (0..num_problems)
-                    .map(|_| ProblemAttempt {
-                        solved_during: false,
-                        solved_after: false,
-                        wrong_attempts_during: 0,
-                        solve_time_secs: 0,
-                    })
-                    .collect()
-            });
+        let problems = user_problems.entry(uid.clone()).or_insert_with(|| {
+            (0..num_problems)
+                .map(|_| ProblemAttempt {
+                    solved_during: false,
+                    solved_after: false,
+                    wrong_attempts_during: 0,
+                    solve_time_secs: 0,
+                })
+                .collect()
+        });
 
         if prob_idx >= problems.len() {
             continue;
@@ -207,7 +209,10 @@ fn process_contest(
 }
 
 // main ranking function: fetches all contests, merges, ranks
-pub async fn analyze(pool: &sqlx::PgPool, request: &RankerRequest) -> Result<RankerResponse, AppError> {
+pub async fn analyze(
+    pool: &sqlx::PgPool,
+    request: &RankerRequest,
+) -> Result<RankerResponse, AppError> {
     if request.contest_ids.is_empty() {
         return Err(AppError::BadRequest(
             "At least one contest ID is required".to_string(),
@@ -216,7 +221,7 @@ pub async fn analyze(pool: &sqlx::PgPool, request: &RankerRequest) -> Result<Ran
 
     // build vjudge_handle -> real_name map from the database
     let rows = sqlx::query_as::<_, (String, String)>(
-        "SELECT LOWER(vjudge_handle), name FROM users WHERE vjudge_handle IS NOT NULL"
+        "SELECT LOWER(vjudge_handle), name FROM users WHERE vjudge_handle IS NOT NULL",
     )
     .fetch_all(pool)
     .await?;
@@ -276,7 +281,16 @@ pub async fn analyze(pool: &sqlx::PgPool, request: &RankerRequest) -> Result<Ran
     }
 
     // tuple: (handle, real_name, score, solved, upsolved, penalty, contests_participated, details)
-    let mut participants: Vec<(String, String, f64, usize, usize, i64, usize, Vec<ContestResult>)> = Vec::new();
+    let mut participants: Vec<(
+        String,
+        String,
+        f64,
+        usize,
+        usize,
+        i64,
+        usize,
+        Vec<ContestResult>,
+    )> = Vec::new();
 
     for (lowercase_handle, original_handle) in &unique_handles {
         let mut total_score = 0.0;
@@ -319,7 +333,9 @@ pub async fn analyze(pool: &sqlx::PgPool, request: &RankerRequest) -> Result<Ran
             }
         }
 
-        let real_name = handle_to_name.get(lowercase_handle).cloned()
+        let real_name = handle_to_name
+            .get(lowercase_handle)
+            .cloned()
             .unwrap_or_else(|| "unregistered".to_string());
 
         participants.push((
@@ -418,7 +434,11 @@ pub async fn analyze(pool: &sqlx::PgPool, request: &RankerRequest) -> Result<Ran
     let mut rankings: Vec<RankedParticipant> = Vec::new();
     let mut current_rank = 1;
 
-    for (i, (handle, real_name, score, solved, upsolved, penalty, contests_participated, details)) in participants.into_iter().enumerate() {
+    for (
+        i,
+        (handle, real_name, score, solved, upsolved, penalty, contests_participated, details),
+    ) in participants.into_iter().enumerate()
+    {
         if i > 0 {
             let prev = &rankings[i - 1];
             if solved != prev.problems_solved

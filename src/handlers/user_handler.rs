@@ -99,14 +99,15 @@ pub async fn search_users(
     Query(params): Query<HashMap<String, String>>,
     State(state): State<AppState>,
 ) -> Result<Json<Value>, AppError> {
-    let name_query = params.get("name").map(|s| format!("%{}%", s)).unwrap_or_else(|| "%".to_string());
-    
-    let users = sqlx::query_as::<_, User>(
-        "SELECT * FROM users WHERE name ILIKE $1 LIMIT 10"
-    )
-    .bind(name_query)
-    .fetch_all(&state.pool)
-    .await?;
+    let name_query = params
+        .get("name")
+        .map(|s| format!("%{}%", s))
+        .unwrap_or_else(|| "%".to_string());
+
+    let users = sqlx::query_as::<_, User>("SELECT * FROM users WHERE name ILIKE $1 LIMIT 10")
+        .bind(name_query)
+        .fetch_all(&state.pool)
+        .await?;
 
     Ok(Json(json!({
         "success": true,
