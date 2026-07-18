@@ -31,7 +31,6 @@ async fn main() {
         .allow_origin([
             "http://localhost:5173".parse::<http::HeaderValue>().unwrap(),
             "http://localhost:4173".parse::<http::HeaderValue>().unwrap(),
-            "https://cp-geeks-frontend.vercel.app".parse::<http::HeaderValue>().unwrap(),
         ])
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers(Any);
