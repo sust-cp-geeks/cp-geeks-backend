@@ -75,6 +75,104 @@ The server starts at **`http://localhost:8080`**
 
 ## Architecture
 
+```mermaid
+flowchart TD
+    %% Client Tier
+    subgraph CL ["Client Layer"]
+        client["Web Frontend / API Clients"]
+    end
+
+    %% Gateway Tier
+    subgraph GW ["" ]
+        direction LR
+        cors["CORS & Tracing"]
+        jwt["JWT Auth Guard"]
+        router["Axum Router"]
+    end
+
+    %% Application Layer
+    subgraph APP ["Core Application Services & Modules"]
+        auth_svc[" Auth & User Management\n(Register, Login, OTP, Admin Approvals)"]
+        ranker_svc[" VJudge Ranker Service\n(ICPC Ranking Engine, PDF Generator)"]
+        cf_svc[" Codeforces Integration\n(Profile Stats & Community Leaderboard)"]
+        crud_svc[" Community Content Management\n(Contests, Announcements, Events & Teams)"]
+    end
+
+    %% Infrastructure & External Layer
+    subgraph INFRA ["Data Layer & External Integrations"]
+        direction LR
+        db[("🐘 Neon PostgreSQL\n(Serverless Database)")]
+        resend[" Resend API\n(Transactional Email)"]
+        cf_api[" Codeforces API\n(Live User Data)"]
+        vj_api[" VJudge API\n(Contest Standings)"]
+    end
+
+    %% Flow Connections
+    client -->|"HTTP / REST Requests"| cors
+    cors --> jwt
+    jwt --> router
+
+    router -->|"Auth & Admin Routes"| auth_svc
+    router -->|"Ranker & PDF Routes"| ranker_svc
+    router -->|"CF Stats Routes"| cf_svc
+    router -->|"CRUD Routes"| crud_svc
+
+    auth_svc -->|"User Profiles & Passwords"| db
+    auth_svc -->|"Dispatch Verification Emails"| resend
+
+    ranker_svc -->|"Fetch Live Standings JSON"| vj_api
+    ranker_svc -->|"Query User Handles"| db
+
+    cf_svc -->|"Fetch Submissions & Rating History"| cf_api
+
+    crud_svc -->|"Persist Contests & Team Data"| db
+
+    %% Professional Styling
+    classDef clientStyle fill:#1e1b4b,color:#e0e7ff,stroke:#6366f1,stroke-width:2px;
+    classDef gwStyle fill:#0f172a,color:#f8fafc,stroke:#38bdf8,stroke-width:2px;
+    classDef appStyle fill:#064e3b,color:#ecfdf5,stroke:#34d399,stroke-width:2px;
+    classDef infraStyle fill:#311042,color:#fae8ff,stroke:#c084fc,stroke-width:2px;
+
+    class client clientStyle;
+    class cors,jwt,router gwStyle;
+    class auth_svc,ranker_svc,cf_svc,crud_svc appStyle;
+    class db,resend,cf_api,vj_api infraStyle;
+```
+
+### Request Lifecycle
+
+```
+Client Request
+     │
+     ▼
+┌─────────────┐
+│  CORS Layer  │  ← allows frontend origins
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│ Axum Router  │  ← matches route → handler
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│JWT Middleware│  ← extracts Claims from Bearer token (protected routes only)
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│   Handler    │  ← validates input, orchestrates logic
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│   Service    │  ← business logic, external API calls
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│  Database /  │  ← SQLx queries (Neon PostgreSQL)
+│ External API │  ← reqwest HTTP calls (Codeforces, VJudge, Resend)
+└─────────────┘
+```
+
+## Project Structure
+
 ```
 src/
 ├── main.rs                      # entry point, router assembly, cors
