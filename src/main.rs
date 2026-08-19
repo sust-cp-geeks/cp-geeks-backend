@@ -31,6 +31,7 @@ async fn main() {
         .allow_origin([
             "http://localhost:5173".parse::<http::HeaderValue>().unwrap(),
             "http://localhost:4173".parse::<http::HeaderValue>().unwrap(),
+            "http://localhost:3000".parse::<http::HeaderValue>().unwrap(),
         ])
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers(Any);
@@ -44,6 +45,7 @@ async fn main() {
         .nest("/api/events", routes::event_routes::routes())
         .nest("/api/cf", routes::codeforces_routes::routes())
         .nest("/api/ranker", routes::ranker_routes::routes())
+        .nest("/api/problems", routes::problem_routes::routes())
         .route(
             "/api/health",
             axum::routing::get(handlers::health_handler::health_check),

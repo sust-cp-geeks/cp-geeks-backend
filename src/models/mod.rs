@@ -4,3 +4,4 @@ pub mod contest;
 pub mod event;
 pub mod ranker;
 pub mod user;
+pub mod problem;
