@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use crate::models::ranker::RankerResponse;
+use crate::utils::rate_limit::RateLimiter;
 
 // how long an /analyze result stays downloadable as a pdf
 const SESSION_TTL: Duration = Duration::from_secs(6 * 60 * 60);
@@ -19,6 +20,7 @@ pub struct CachedResult {
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
+    pub limiter: RateLimiter,
     results_cache: Arc<Mutex<HashMap<String, CachedResult>>>,
 }
 
@@ -26,6 +28,7 @@ impl AppState {
     pub fn new(pool: PgPool) -> Self {
         Self {
             pool,
+            limiter: RateLimiter::new(),
             results_cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }

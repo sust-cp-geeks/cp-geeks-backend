@@ -24,6 +24,9 @@ pub enum AppError {
     // 409 — duplicate (email already exists, etc.)
     Conflict(String),
 
+    // 429 — too many requests, slow down
+    TooManyRequests(String),
+
     // 500 — something went wrong on our side
     InternalError(String),
 }
@@ -37,6 +40,7 @@ impl IntoResponse for AppError {
             AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg),
+            AppError::TooManyRequests(msg) => (StatusCode::TOO_MANY_REQUESTS, msg),
             AppError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
         };
 

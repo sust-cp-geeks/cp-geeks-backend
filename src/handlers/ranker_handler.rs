@@ -1,13 +1,27 @@
-use axum::extract::{Path, Query, State};
-use axum::http::header;
+use axum::extract::{ConnectInfo, Path, Query, State};
+use axum::http::{header, HeaderMap};
 use axum::response::IntoResponse;
 use axum::Json;
 use serde_json::{json, Value};
+use std::net::SocketAddr;
 
 use crate::app_state::AppState;
 use crate::errors::AppError;
 use crate::models::ranker::{RankerRequest, RankerResponse};
 use crate::services::ranker;
+use crate::utils::rate_limit;
+
+// best-effort client ip — behind a proxy the socket address is the proxy, so
+// prefer the first hop in x-forwarded-for when it's there
+fn client_ip(headers: &HeaderMap, addr: SocketAddr) -> String {
+    headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| addr.ip().to_string())
+}
 
 // fetch contest title from vjudge
 pub async fn get_contest_title(Path(id): Path<u64>) -> Result<Json<Value>, AppError> {
@@ -21,8 +35,18 @@ pub async fn get_contest_title(Path(id): Path<u64>) -> Result<Json<Value>, AppEr
 // analyze contests and return ranked results
 pub async fn analyze(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(body): Json<RankerRequest>,
 ) -> Result<Json<Value>, AppError> {
+    // public endpoint that fans out to vjudge, so cap it per ip
+    let ip = client_ip(&headers, addr);
+    state.limiter.check(
+        &rate_limit::analyze_key(&ip),
+        rate_limit::ANALYZE_MAX,
+        rate_limit::ANALYZE_WINDOW,
+    )?;
+
     // validate input
     if body.title.trim().is_empty() {
         return Err(AppError::BadRequest("Title is required".to_string()));

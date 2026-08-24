@@ -11,6 +11,7 @@ use crate::models::user::{LoginInput, RegisterInput, User};
 use crate::services::{codeforces, email};
 use crate::utils::jwt::create_token;
 use crate::utils::otp;
+use crate::utils::rate_limit;
 use crate::validation::{validate_email, validate_string};
 
 #[derive(Debug, Deserialize)]
@@ -24,6 +25,44 @@ pub struct ResendOtpInput {
     pub email: String,
 }
 
+// verifies an otp and counts wrong guesses
+// a 6-digit code is only 1e6 options, so without a cap it can just be guessed —
+// after OTP_MAX_ATTEMPTS we burn the live codes and make them request a new one
+async fn verify_otp_guarded(
+    state: &AppState,
+    email: &str,
+    code: &str,
+    label: &str,
+) -> Result<(), AppError> {
+    let key = rate_limit::otp_attempt_key(email);
+
+    // refuse before touching the db once the allowance is gone
+    state.limiter.check(
+        &key,
+        rate_limit::OTP_MAX_ATTEMPTS,
+        rate_limit::OTP_ATTEMPT_WINDOW,
+    )?;
+
+    let is_valid = otp::verify_otp(&state.pool, email, code).await?;
+
+    if !is_valid {
+        // that guess counted — once the allowance runs out, kill the live codes
+        if state.limiter.count(&key, rate_limit::OTP_ATTEMPT_WINDOW) >= rate_limit::OTP_MAX_ATTEMPTS
+        {
+            otp::invalidate_otps(&state.pool, email).await?;
+            tracing::warn!("otp attempt limit hit for {} — codes invalidated", email);
+        }
+        return Err(AppError::BadRequest(format!(
+            "Invalid or expired {}",
+            label
+        )));
+    }
+
+    // honest user got it right, don't leave them counted against
+    state.limiter.reset(&key);
+    Ok(())
+}
+
 pub async fn register(
     State(state): State<AppState>,
     Json(body): Json<RegisterInput>,
@@ -33,6 +72,13 @@ pub async fn register(
     validate_string(&body.reg_number, "Registration number", 5, 50)?;
     validate_string(&body.password, "Password", 6, 255)?;
     validate_email(&body.email)?;
+
+    // caps otp mail per address so registration can't be used to bomb an inbox
+    state.limiter.check(
+        &rate_limit::otp_send_key(&body.email),
+        rate_limit::OTP_SEND_MAX,
+        rate_limit::OTP_SEND_WINDOW,
+    )?;
 
     let cf_handle = body
         .codeforces_handle
@@ -111,13 +157,7 @@ pub async fn verify_otp_handler(
     validate_email(&body.email)?;
     validate_string(&body.code, "OTP code", 6, 6)?;
 
-    let is_valid = otp::verify_otp(&state.pool, &body.email, &body.code).await?;
-
-    if !is_valid {
-        return Err(AppError::BadRequest(
-            "Invalid or expired verification code".to_string(),
-        ));
-    }
+    verify_otp_guarded(&state, &body.email, &body.code, "verification code").await?;
 
     // otp is valid — transition user status
     // sust students go straight to active, others need admin approval
@@ -152,6 +192,12 @@ pub async fn resend_otp_handler(
     Json(body): Json<ResendOtpInput>,
 ) -> Result<Json<Value>, AppError> {
     validate_email(&body.email)?;
+
+    state.limiter.check(
+        &rate_limit::otp_send_key(&body.email),
+        rate_limit::OTP_SEND_MAX,
+        rate_limit::OTP_SEND_WINDOW,
+    )?;
 
     // make sure the user exists and is still pending verification
     let status = sqlx::query_scalar::<_, String>("SELECT status FROM users WHERE email = $1")
@@ -190,6 +236,14 @@ pub async fn login(
     State(state): State<AppState>,
     Json(body): Json<LoginInput>,
 ) -> Result<Json<Value>, AppError> {
+    // cap password guesses per account
+    let login_key = rate_limit::login_key(&body.email);
+    state.limiter.check(
+        &login_key,
+        rate_limit::LOGIN_MAX_ATTEMPTS,
+        rate_limit::LOGIN_WINDOW,
+    )?;
+
     // find user by email — use vague error to prevent user enumeration
     let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
         .bind(&body.email)
@@ -234,6 +288,9 @@ pub async fn login(
         ));
     }
 
+    // logged in fine — don't leave successful attempts counted against them
+    state.limiter.reset(&login_key);
+
     // generate jwt token
     let token = create_token(
         user.user_id,
@@ -276,6 +333,12 @@ pub async fn forgot_password(
     Json(body): Json<ForgotPasswordInput>,
 ) -> Result<Json<Value>, AppError> {
     validate_email(&body.email)?;
+
+    state.limiter.check(
+        &rate_limit::otp_send_key(&body.email),
+        rate_limit::OTP_SEND_MAX,
+        rate_limit::OTP_SEND_WINDOW,
+    )?;
 
     // look up the user — return vague error to prevent user enumeration
     let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
@@ -324,13 +387,7 @@ pub async fn reset_password(
     validate_string(&body.new_password, "New password", 6, 255)?;
 
     // verify the otp
-    let is_valid = otp::verify_otp(&state.pool, &body.email, &body.code).await?;
-
-    if !is_valid {
-        return Err(AppError::BadRequest(
-            "Invalid or expired reset code".to_string(),
-        ));
-    }
+    verify_otp_guarded(&state, &body.email, &body.code, "reset code").await?;
 
     // hash the new password
     let salt = SaltString::generate(&mut OsRng);

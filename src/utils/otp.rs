@@ -31,6 +31,15 @@ pub async fn store_otp(pool: &PgPool, email: &str, code: &str) -> Result<(), App
     Ok(())
 }
 
+// burns every outstanding code for an email — used after too many wrong guesses
+pub async fn invalidate_otps(pool: &PgPool, email: &str) -> Result<(), AppError> {
+    sqlx::query("UPDATE otp_codes SET used = true WHERE email = $1 AND used = false")
+        .bind(email)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 // verifies an otp — checks it exists, is not expired, and has not been used
 pub async fn verify_otp(pool: &PgPool, email: &str, code: &str) -> Result<bool, AppError> {
     let result = sqlx::query_scalar::<_, i32>(
