@@ -38,7 +38,7 @@ pub async fn send_otp_email(to: &str, otp: &str) -> Result<(), AppError> {
 
     resend.emails.send(email).await.map_err(|e| {
         tracing::error!("failed to send email via resend: {}", e);
-        AppError::InternalError(format!("Failed to send verification email: {}", e))
+        AppError::InternalError("Failed to send verification email".to_string())
     })?;
 
     tracing::info!("otp email sent to {}", to);
@@ -81,7 +81,7 @@ pub async fn send_password_reset_email(to: &str, otp: &str) -> Result<(), AppErr
 
     resend.emails.send(email).await.map_err(|e| {
         tracing::error!("failed to send password reset email via resend: {}", e);
-        AppError::InternalError(format!("Failed to send password reset email: {}", e))
+        AppError::InternalError("Failed to send password reset email".to_string())
     })?;
 
     tracing::info!("password reset email sent to {}", to);

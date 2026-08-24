@@ -50,7 +50,13 @@ impl FromRequestParts<AppState> for Claims {
             status: StatusCode::UNAUTHORIZED,
         })?;
 
-        let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
+        let jwt_secret = std::env::var("JWT_SECRET").map_err(|_| {
+            tracing::error!("JWT_SECRET is not set — cannot verify tokens");
+            AuthError {
+                message: "Server authentication is misconfigured".to_string(),
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+            }
+        })?;
 
         let decoded = decode::<Claims>(
             token,

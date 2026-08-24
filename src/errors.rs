@@ -50,10 +50,11 @@ impl IntoResponse for AppError {
 }
 
 // auto-convert database errors so we can use ? with sqlx
+// log the real error but send back something generic — don't leak schema details
 impl From<sqlx::Error> for AppError {
     fn from(e: sqlx::Error) -> Self {
         tracing::error!("database error: {}", e);
-        AppError::InternalError(format!("Database error: {}", e))
+        AppError::InternalError("Database error".to_string())
     }
 }
 

@@ -3,14 +3,13 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use chrono::NaiveDateTime;
 use serde_json::{json, Value};
 
 use crate::app_state::AppState;
 use crate::errors::{require_admin, AppError};
 use crate::models::contest::{Contest, CreateContest, UpdateContest};
 use crate::utils::jwt::Claims;
-use crate::validation::{validate_string, validate_url};
+use crate::validation::{parse_datetime, validate_string, validate_url};
 
 // list all contests, newest first
 pub async fn get_contests(
@@ -56,10 +55,10 @@ pub async fn create_contest(
     validate_string(&body.contest_link, "Contest link", 1, 255)?;
     validate_url(&body.contest_link, "Contest link")?;
 
-    let contest_date = body
-        .contest_date
-        .as_ref()
-        .and_then(|d| NaiveDateTime::parse_from_str(d, "%Y-%m-%dT%H:%M:%S").ok());
+    let contest_date = match &body.contest_date {
+        Some(d) => parse_datetime(d, "contest_date")?,
+        None => None,
+    };
 
     let contest = sqlx::query_as::<_, Contest>(
         r#"INSERT INTO contests (title, contest_link, contest_date)
@@ -100,7 +99,7 @@ pub async fn update_contest(
     let new_title = body.title.unwrap_or(existing.title);
     let new_link = body.contest_link.unwrap_or(existing.contest_link);
     let new_date = match body.contest_date {
-        Some(d) => NaiveDateTime::parse_from_str(&d, "%Y-%m-%dT%H:%M:%S").ok(),
+        Some(d) => parse_datetime(&d, "contest_date")?,
         None => existing.contest_date,
     };
 

@@ -38,10 +38,7 @@ pub async fn analyze(
 
     // cache the result for pdf download
     let session_id = uuid::Uuid::new_v4().to_string();
-    {
-        let mut cache = state.results_cache.lock().unwrap();
-        cache.insert(session_id.clone(), result.clone());
-    }
+    state.store_result(session_id.clone(), result.clone());
 
     Ok(Json(json!({
         "success": true,
@@ -62,10 +59,7 @@ pub async fn download_pdf(
     Query(query): Query<PdfQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     // look up cached result
-    let result = {
-        let cache = state.results_cache.lock().unwrap();
-        cache.get(&session_id).cloned()
-    };
+    let result = state.get_result(&session_id);
 
     let result = result.ok_or(AppError::NotFound(
         "Session not found — please run /analyze first".to_string(),

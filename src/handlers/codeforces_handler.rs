@@ -17,15 +17,20 @@ pub async fn get_cf_stats(
     Path(user_id): Path<i32>,
 ) -> Result<Json<Value>, AppError> {
     // look up the user's cf handle from our database
-    let handle =
-        sqlx::query_scalar::<_, String>("SELECT codeforces_handle FROM users WHERE user_id = $1")
-            .bind(user_id)
-            .fetch_optional(&state.pool)
-            .await?;
+    let handle = sqlx::query_scalar::<_, Option<String>>(
+        "SELECT codeforces_handle FROM users WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.pool)
+    .await?;
 
-    let handle = handle.ok_or(AppError::NotFound(
-        "User not found or has no Codeforces handle".to_string(),
-    ))?;
+    // outer none = no such user, inner none = user has no handle set
+    let handle = handle
+        .flatten()
+        .filter(|h| !h.trim().is_empty())
+        .ok_or(AppError::NotFound(
+            "User not found or has no Codeforces handle".to_string(),
+        ))?;
 
     // fetch live stats from codeforces api
     let stats = codeforces::build_profile_stats(&handle).await?;

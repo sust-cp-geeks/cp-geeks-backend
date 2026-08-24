@@ -31,10 +31,6 @@ fn process_contest(
             if let Some(handle) = arr.first().and_then(|v| v.as_str()) {
                 id_to_handle.insert(uid.clone(), handle.to_string());
             }
-        } else if let Some(obj) = info.as_object() {
-            if let Some(handle) = obj.get("name").and_then(|v| v.as_str()) {
-                id_to_handle.insert(uid.clone(), handle.to_string());
-            }
         }
     }
 
@@ -424,10 +420,12 @@ pub async fn analyze(
     }
 
     // sort: total solved desc, then penalty asc, then upsolved desc
+    // handle asc at the end so tied rows don't shuffle around between runs
     participants.sort_by(|a, b| {
         b.3.cmp(&a.3) // solved desc
             .then(a.5.cmp(&b.5)) // penalty asc
             .then(b.4.cmp(&a.4)) // upsolved desc
+            .then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase())) // handle asc
     });
 
     // assign ranks (equal solved + penalty + upsolved = same rank)

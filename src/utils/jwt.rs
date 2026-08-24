@@ -17,7 +17,10 @@ pub fn create_token(
     is_admin: bool,
     is_manager: bool,
 ) -> Result<String, String> {
-    let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
+    let secret = std::env::var("JWT_SECRET").map_err(|_| {
+        tracing::error!("JWT_SECRET is not set — cannot issue tokens");
+        "Server authentication is misconfigured".to_string()
+    })?;
 
     let expiry = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::days(7))

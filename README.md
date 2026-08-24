@@ -85,6 +85,9 @@ cargo run              # serves at http://localhost:8080
 | `JWT_SECRET` | Yes | Secret key for signing JWT tokens |
 | `RESEND_API_KEY` | Yes | Resend API key for OTP emails |
 | `RESEND_FROM_EMAIL` | No | Sender address (defaults to `onboarding@resend.dev`) |
+| `CORS_ALLOWED_ORIGINS` | No | Comma-separated allowed origins (defaults to `http://localhost:5173,http://localhost:4173`) |
+| `PORT` | No | Listen port (defaults to `8080`) |
+| `RUST_LOG` | No | Log filter (defaults to `info,tower_http=debug`) |
 
 ## API
 

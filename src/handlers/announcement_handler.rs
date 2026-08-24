@@ -3,14 +3,13 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use chrono::NaiveDateTime;
 use serde_json::{json, Value};
 
 use crate::app_state::AppState;
 use crate::errors::{require_admin, AppError};
 use crate::models::announcement::{Announcement, CreateAnnouncement, UpdateAnnouncement};
 use crate::utils::jwt::Claims;
-use crate::validation::validate_string;
+use crate::validation::{parse_datetime, validate_string};
 
 // list all announcements, newest first
 pub async fn get_announcements(
@@ -58,10 +57,10 @@ pub async fn create_announcement(
     validate_string(&body.title, "Title", 1, 255)?;
     validate_string(&body.content, "Content", 1, 10000)?;
 
-    let event_date = body
-        .event_date
-        .as_ref()
-        .and_then(|d| NaiveDateTime::parse_from_str(d, "%Y-%m-%dT%H:%M:%S").ok());
+    let event_date = match &body.event_date {
+        Some(d) => parse_datetime(d, "event_date")?,
+        None => None,
+    };
 
     let announcement = sqlx::query_as::<_, Announcement>(
         r#"INSERT INTO announcements (author_id, title, content, category, event_date)
@@ -109,7 +108,7 @@ pub async fn update_announcement(
         None => existing.category,
     };
     let new_event_date = match body.event_date {
-        Some(d) => NaiveDateTime::parse_from_str(&d, "%Y-%m-%dT%H:%M:%S").ok(),
+        Some(d) => parse_datetime(&d, "event_date")?,
         None => existing.event_date,
     };
 

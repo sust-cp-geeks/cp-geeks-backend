@@ -54,6 +54,19 @@ pub async fn register(
         return Err(AppError::Conflict("Email already registered".to_string()));
     }
 
+    // reg_number is unique too — check it here so duplicates give 409, not 500
+    let existing_reg =
+        sqlx::query_scalar::<_, i32>("SELECT user_id FROM users WHERE reg_number = $1")
+            .bind(&body.reg_number)
+            .fetch_optional(&state.pool)
+            .await?;
+
+    if existing_reg.is_some() {
+        return Err(AppError::Conflict(
+            "Registration number already registered".to_string(),
+        ));
+    }
+
     // hash password with argon2
     let salt = SaltString::generate(&mut OsRng);
     let hashed = Argon2::default()

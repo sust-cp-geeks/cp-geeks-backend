@@ -3,7 +3,6 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use chrono::NaiveDateTime;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -14,7 +13,7 @@ use crate::models::event::{
     UpdateEventInput,
 };
 use crate::utils::jwt::Claims;
-use crate::validation::validate_string;
+use crate::validation::{parse_datetime, validate_string};
 
 // helper rows for the join queries
 #[derive(sqlx::FromRow)]
@@ -159,12 +158,8 @@ pub async fn create_event(
 
     validate_string(&body.description, "Description", 1, 10000)?;
 
-    let event_date =
-        NaiveDateTime::parse_from_str(&body.event_date, "%Y-%m-%dT%H:%M:%S").map_err(|_| {
-            AppError::BadRequest(
-                "Invalid event_date format (expected YYYY-MM-DDTHH:MM:SS)".to_string(),
-            )
-        })?;
+    let event_date = parse_datetime(&body.event_date, "event_date")?
+        .ok_or_else(|| AppError::BadRequest("event_date is required".to_string()))?;
 
     let event = sqlx::query_as::<_, Event>(
         r#"INSERT INTO events (description, event_date, vjudge_contest_ids)
@@ -204,11 +199,8 @@ pub async fn update_event(
 
     let new_description = body.description.unwrap_or(existing.description);
     let new_date = match body.event_date {
-        Some(d) => NaiveDateTime::parse_from_str(&d, "%Y-%m-%dT%H:%M:%S").map_err(|_| {
-            AppError::BadRequest(
-                "Invalid event_date format (expected YYYY-MM-DDTHH:MM:SS)".to_string(),
-            )
-        })?,
+        Some(d) => parse_datetime(&d, "event_date")?
+            .ok_or_else(|| AppError::BadRequest("event_date is required".to_string()))?,
         None => existing.event_date,
     };
 
@@ -274,6 +266,17 @@ pub async fn add_team(
         return Err(AppError::BadRequest(
             "A team must have exactly 3 members".to_string(),
         ));
+    }
+
+    // check the event exists first — otherwise the foreign key blows up as a 500
+    let event_exists =
+        sqlx::query_scalar::<_, i32>("SELECT event_id FROM events WHERE event_id = $1")
+            .bind(event_id)
+            .fetch_optional(&state.pool)
+            .await?;
+
+    if event_exists.is_none() {
+        return Err(AppError::NotFound("Event not found".to_string()));
     }
 
     let mut tx = state.pool.begin().await?;
