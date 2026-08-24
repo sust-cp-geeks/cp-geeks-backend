@@ -4,5 +4,6 @@ pub mod auth_routes;
 pub mod codeforces_routes;
 pub mod contest_routes;
 pub mod event_routes;
+pub mod problem_routes;
 pub mod ranker_routes;
 pub mod user_routes;

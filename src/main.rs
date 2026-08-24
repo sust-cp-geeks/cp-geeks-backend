@@ -16,7 +16,11 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 // fallback origins when CORS_ALLOWED_ORIGINS isn't set
-const DEFAULT_ALLOWED_ORIGINS: &[&str] = &["http://localhost:5173", "http://localhost:4173"];
+const DEFAULT_ALLOWED_ORIGINS: &[&str] = &[
+    "http://localhost:5173",
+    "http://localhost:4173",
+    "http://localhost:3000",
+];
 
 // builds the cors layer from CORS_ALLOWED_ORIGINS so deploys don't need a code change
 fn build_cors() -> CorsLayer {
@@ -83,6 +87,7 @@ async fn main() {
         .nest("/api/events", routes::event_routes::routes())
         .nest("/api/cf", routes::codeforces_routes::routes())
         .nest("/api/ranker", routes::ranker_routes::routes())
+        .nest("/api/problems", routes::problem_routes::routes())
         .route(
             "/api/health",
             axum::routing::get(handlers::health_handler::health_check),
