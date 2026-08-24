@@ -313,7 +313,7 @@ pub async fn add_team(
 pub async fn update_team(
     claims: Claims,
     State(state): State<AppState>,
-    Path((_event_id, team_id)): Path<(i32, i32)>,
+    Path((event_id, team_id)): Path<(i32, i32)>,
     Json(body): Json<TeamInput>,
 ) -> Result<Json<Value>, AppError> {
     require_admin_or_manager(&claims)?;
@@ -326,11 +326,15 @@ pub async fn update_team(
 
     let mut tx = state.pool.begin().await?;
 
-    let result = sqlx::query("UPDATE teams SET coach_name = $1 WHERE team_id = $2")
-        .bind(&body.coach_name)
-        .bind(team_id)
-        .execute(&mut *tx)
-        .await?;
+    // scope by event too — otherwise any team could be edited through any
+    // event's url, since the event_id in the path was never checked
+    let result =
+        sqlx::query("UPDATE teams SET coach_name = $1 WHERE team_id = $2 AND event_id = $3")
+            .bind(&body.coach_name)
+            .bind(team_id)
+            .bind(event_id)
+            .execute(&mut *tx)
+            .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("Team not found".to_string()));
@@ -363,12 +367,14 @@ pub async fn update_team(
 pub async fn delete_team(
     claims: Claims,
     State(state): State<AppState>,
-    Path((_event_id, team_id)): Path<(i32, i32)>,
+    Path((event_id, team_id)): Path<(i32, i32)>,
 ) -> Result<Json<Value>, AppError> {
     require_admin_or_manager(&claims)?;
 
-    let result = sqlx::query("DELETE FROM teams WHERE team_id = $1")
+    // scope by event so a team can't be deleted through another event's url
+    let result = sqlx::query("DELETE FROM teams WHERE team_id = $1 AND event_id = $2")
         .bind(team_id)
+        .bind(event_id)
         .execute(&state.pool)
         .await?;
 
