@@ -7,14 +7,17 @@ pub fn validate_string(
     min_len: usize,
     max_len: usize,
 ) -> Result<(), AppError> {
+    // count characters, not bytes — a bengali name is ~3 bytes per character
+    // and postgres VARCHAR(n) counts characters too
     let trimmed = value.trim();
-    if trimmed.len() < min_len {
+    let length = trimmed.chars().count();
+    if length < min_len {
         return Err(AppError::BadRequest(format!(
             "{} must be at least {} characters",
             field_name, min_len
         )));
     }
-    if trimmed.len() > max_len {
+    if length > max_len {
         return Err(AppError::BadRequest(format!(
             "{} must be at most {} characters",
             field_name, max_len

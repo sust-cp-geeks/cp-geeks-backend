@@ -6,6 +6,7 @@ use crate::errors::AppError;
 use crate::models::user::{UpdateProfile, User};
 use crate::services::codeforces;
 use crate::utils::jwt::Claims;
+use crate::validation::validate_string;
 
 // get my profile
 pub async fn get_me(
@@ -39,16 +40,34 @@ pub async fn update_me(
     let existing = existing.ok_or(AppError::NotFound("User not found".to_string()))?;
 
     // merge: use new value if provided, keep existing if not
-    let new_name = body.name.unwrap_or(existing.name);
+    // same limits register enforces — without these an oversized value just hit
+    // the VARCHAR limit and came back as a 500
+    let new_name = match body.name {
+        Some(name) => {
+            validate_string(&name, "Name", 2, 100)?;
+            name.trim().to_string()
+        }
+        None => existing.name,
+    };
+
+    // an empty handle means "clear it" — every read path already treats an empty
+    // handle as no handle, so store null instead of an empty string
     let new_vjudge = match body.vjudge_handle {
-        Some(handle) => Some(handle),
+        Some(handle) if handle.trim().is_empty() => None,
+        Some(handle) => {
+            validate_string(&handle, "VJudge handle", 1, 100)?;
+            Some(handle.trim().to_string())
+        }
         None => existing.vjudge_handle,
     };
+
     let new_codeforces = match body.codeforces_handle {
+        Some(handle) if handle.trim().is_empty() => None,
         Some(handle) => {
+            validate_string(&handle, "Codeforces handle", 1, 50)?;
             // validate the new handle exists on codeforces.com
-            codeforces::validate_handle(&handle).await?;
-            Some(handle)
+            codeforces::validate_handle(handle.trim()).await?;
+            Some(handle.trim().to_string())
         }
         None => existing.codeforces_handle,
     };
