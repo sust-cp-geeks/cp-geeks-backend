@@ -32,6 +32,10 @@ pub async fn get_contest_title(Path(id): Path<u64>) -> Result<Json<Value>, AppEr
     })))
 }
 
+// each contest id is one outbound vjudge fetch, so bound how far a single
+// request can fan out — a semester's worth of contests fits comfortably
+const MAX_CONTEST_IDS: usize = 50;
+
 // analyze contests and return ranked results
 pub async fn analyze(
     State(state): State<AppState>,
@@ -55,6 +59,12 @@ pub async fn analyze(
         return Err(AppError::BadRequest(
             "At least one contest ID is required".to_string(),
         ));
+    }
+    if body.contest_ids.len() > MAX_CONTEST_IDS {
+        return Err(AppError::BadRequest(format!(
+            "Too many contest IDs — at most {} per request",
+            MAX_CONTEST_IDS
+        )));
     }
 
     // run the ranking algorithm

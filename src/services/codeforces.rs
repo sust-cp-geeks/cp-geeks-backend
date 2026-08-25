@@ -5,6 +5,7 @@ use crate::models::codeforces::{
     CfApiResponse, CfProfileStats, CfRatingChange, CfSubmission, CfUserInfo, ContestPerformance,
     SolveCountPeriod, SolveCounts,
 };
+use crate::services::http;
 
 const CF_API_BASE: &str = "https://codeforces.com/api";
 
@@ -24,12 +25,7 @@ const BUCKETS: &[(&str, i32, i32)] = &[
 pub async fn validate_handle(handle: &str) -> Result<CfUserInfo, AppError> {
     let url = format!("{}/user.info?handles={}", CF_API_BASE, handle);
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .unwrap();
-
-    let response = client.get(&url).send().await.map_err(|e| {
+    let response = http::codeforces().get(&url).send().await.map_err(|e| {
         tracing::error!("failed to reach codeforces api: {}", e);
         AppError::InternalError("Could not reach Codeforces API".to_string())
     })?;
@@ -67,7 +63,7 @@ pub async fn validate_handle(handle: &str) -> Result<CfUserInfo, AppError> {
 async fn fetch_submissions(handle: &str) -> Result<Vec<CfSubmission>, AppError> {
     let url = format!("{}/user.status?handle={}", CF_API_BASE, handle);
 
-    let response = reqwest::get(&url).await.map_err(|e| {
+    let response = http::codeforces().get(&url).send().await.map_err(|e| {
         tracing::error!("failed to reach codeforces api: {}", e);
         AppError::InternalError("Could not reach Codeforces API".to_string())
     })?;
@@ -87,7 +83,7 @@ async fn fetch_submissions(handle: &str) -> Result<Vec<CfSubmission>, AppError> 
 async fn fetch_rating_history(handle: &str) -> Result<Vec<CfRatingChange>, AppError> {
     let url = format!("{}/user.rating?handle={}", CF_API_BASE, handle);
 
-    let response = reqwest::get(&url).await.map_err(|e| {
+    let response = http::codeforces().get(&url).send().await.map_err(|e| {
         tracing::error!("failed to reach codeforces api: {}", e);
         AppError::InternalError("Could not reach Codeforces API".to_string())
     })?;

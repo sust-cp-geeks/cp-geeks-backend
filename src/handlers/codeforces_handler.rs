@@ -71,15 +71,14 @@ pub async fn get_leaderboard(
         handles_param
     );
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .unwrap();
-
-    let response = client.get(&url).send().await.map_err(|e| {
-        tracing::error!("failed to reach codeforces api for leaderboard: {}", e);
-        AppError::InternalError("Could not reach Codeforces API".to_string())
-    })?;
+    let response = crate::services::http::codeforces()
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!("failed to reach codeforces api for leaderboard: {}", e);
+            AppError::InternalError("Could not reach Codeforces API".to_string())
+        })?;
 
     let body = response
         .json::<crate::models::codeforces::CfApiResponse<Vec<crate::models::codeforces::CfUserInfo>>>()
