@@ -1,4 +1,4 @@
 /target
 .env
 /docs/curl_testing.sh
-
+/docs/manual_test.md

@@ -24,6 +24,7 @@ pub struct RegisterInput {
     pub email: String,
     pub password: String,
     pub codeforces_handle: Option<String>,
+    pub vjudge_handle: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

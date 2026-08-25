@@ -90,6 +90,15 @@ pub async fn register(
         codeforces::validate_handle(handle).await?;
     }
 
+    let vjudge_handle = body
+        .vjudge_handle
+        .as_deref()
+        .map(|h| h.trim())
+        .filter(|h| !h.is_empty());
+    if let Some(handle) = vjudge_handle {
+        validate_string(handle, "VJudge handle", 1, 100)?;
+    }
+
     // check if email already exists
     let existing = sqlx::query_scalar::<_, i32>("SELECT user_id FROM users WHERE email = $1")
         .bind(&body.email)
@@ -122,7 +131,7 @@ pub async fn register(
 
     // all new registrations start as pending_verification until otp is confirmed
     let user_id = sqlx::query_scalar::<_, i32>(
-        "INSERT INTO users (reg_number, name, email, password, status, codeforces_handle) VALUES ($1, $2, $3, $4, $5, $6) RETURNING user_id",
+        "INSERT INTO users (reg_number, name, email, password, status, codeforces_handle, vjudge_handle) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING user_id",
     )
     .bind(&body.reg_number)
     .bind(&body.name)
@@ -130,6 +139,7 @@ pub async fn register(
     .bind(&hashed)
     .bind("pending_verification")
     .bind(cf_handle)
+    .bind(vjudge_handle)
     .fetch_one(&state.pool)
     .await?;
 
