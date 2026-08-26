@@ -60,6 +60,35 @@ fn build_cors() -> CorsLayer {
         .allow_headers(Any)
 }
 
+// waits for the process to be asked to stop, so in-flight requests finish
+// instead of being cut off mid-registration on every deploy
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to listen for ctrl-c");
+    };
+
+    // what docker, systemd and most hosts actually send
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to listen for SIGTERM")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("shutdown signal received — finishing in-flight requests");
+}
+
 #[tokio::main]
 async fn main() {
     // a malformed line makes dotenvy stop, silently dropping every variable
@@ -108,6 +137,7 @@ async fn main() {
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
+    .with_graceful_shutdown(shutdown_signal())
     .await
     .unwrap();
 }

@@ -17,6 +17,8 @@ pub struct User {
     pub id_card_path: Option<String>,
     pub id_card_front_path: Option<String>,
     pub id_card_back_path: Option<String>,
+    pub pending_email: Option<String>,
+    pub sessions_valid_from: Option<chrono::NaiveDateTime>,
 }
 
 #[derive(Debug, Deserialize)]

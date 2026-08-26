@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 use crate::app_state::AppState;
 use crate::errors::AppError;
+use crate::handlers::admin_handler::discard_id_card;
 use crate::models::user::{LoginInput, RegisterInput, User};
 use crate::services::{codeforces, email, image_upload, storage};
 use crate::utils::jwt::create_token;
@@ -512,6 +513,210 @@ pub async fn login(
 }
 
 #[derive(Debug, Deserialize)]
+pub struct ChangeEmailInput {
+    pub current_email: String,
+    pub password: String,
+    pub new_email: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChangeEmailVerifyInput {
+    pub new_email: String,
+    pub code: String,
+}
+
+// step 1 of changing an address: prove you own the account, then we mail a code
+// to the address you want to move to
+//
+// this takes a password rather than a token on purpose — a student waiting on
+// manual approval is exactly who needs this, and 'pending' accounts can't log
+// in, so they have no token to present
+pub async fn request_email_change(
+    State(state): State<AppState>,
+    Json(body): Json<ChangeEmailInput>,
+) -> Result<Json<Value>, AppError> {
+    validate_email(&body.current_email)?;
+    validate_email(&body.new_email)?;
+
+    let new_email = body.new_email.trim().to_string();
+    if new_email.eq_ignore_ascii_case(body.current_email.trim()) {
+        return Err(AppError::BadRequest(
+            "That is already your email address".to_string(),
+        ));
+    }
+
+    // this endpoint exists so a manually-registered student can move onto their
+    // university address once it arrives — nothing else is a valid target
+    if !is_student_email(&new_email) {
+        return Err(AppError::BadRequest(
+            "You can only change to an @student.sust.edu address".to_string(),
+        ));
+    }
+
+    // same cap as a failed login, since this also checks a password
+    let login_key = rate_limit::login_key(&body.current_email);
+    state.limiter.check(
+        &login_key,
+        rate_limit::LOGIN_MAX_ATTEMPTS,
+        rate_limit::LOGIN_WINDOW,
+    )?;
+    // and the usual cap on how much mail one address can trigger
+    state.limiter.check(
+        &rate_limit::otp_send_key(&new_email),
+        rate_limit::OTP_SEND_MAX,
+        rate_limit::OTP_SEND_WINDOW,
+    )?;
+
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
+        .bind(body.current_email.trim())
+        .fetch_optional(&state.pool)
+        .await?;
+
+    let user = user.ok_or(AppError::Unauthorized(
+        "Invalid email or password".to_string(),
+    ))?;
+
+    let parsed = PasswordHash::new(&user.password)
+        .map_err(|_| AppError::Unauthorized("Invalid email or password".to_string()))?;
+    if Argon2::default()
+        .verify_password(body.password.as_bytes(), &parsed)
+        .is_err()
+    {
+        return Err(AppError::Unauthorized(
+            "Invalid email or password".to_string(),
+        ));
+    }
+
+    if user.status.as_deref() == Some("rejected") {
+        return Err(AppError::Forbidden(
+            "This account has been rejected".to_string(),
+        ));
+    }
+
+    // taken as a live address, or already claimed by someone mid-change
+    let taken = sqlx::query_scalar::<_, i32>(
+        "SELECT user_id FROM users WHERE (email = $1 OR pending_email = $1) AND user_id <> $2",
+    )
+    .bind(&new_email)
+    .bind(user.user_id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    if taken.is_some() {
+        return Err(AppError::Conflict(
+            "That email is already in use".to_string(),
+        ));
+    }
+
+    state.limiter.reset(&login_key);
+
+    sqlx::query("UPDATE users SET pending_email = $1 WHERE user_id = $2")
+        .bind(&new_email)
+        .bind(user.user_id)
+        .execute(&state.pool)
+        .await?;
+
+    // the code goes to the NEW address — that is what proves they own it
+    let code = otp::generate_otp();
+    otp::store_otp(&state.pool, &new_email, &code).await?;
+    if let Err(e) = email::send_otp_email(&new_email, &code).await {
+        sqlx::query("UPDATE users SET pending_email = NULL WHERE user_id = $1")
+            .bind(user.user_id)
+            .execute(&state.pool)
+            .await
+            .ok();
+        return Err(e);
+    }
+
+    Ok(Json(json!({
+        "success": true,
+        "message": format!("Verification code sent to {} — enter it to finish the change", new_email)
+    })))
+}
+
+// step 2: the code proves they can read the new inbox, so make the swap
+pub async fn confirm_email_change(
+    State(state): State<AppState>,
+    Json(body): Json<ChangeEmailVerifyInput>,
+) -> Result<Json<Value>, AppError> {
+    validate_email(&body.new_email)?;
+    validate_string(&body.code, "OTP code", 6, 6)?;
+
+    let new_email = body.new_email.trim().to_string();
+
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE pending_email = $1")
+        .bind(&new_email)
+        .fetch_optional(&state.pool)
+        .await?;
+
+    let user = user.ok_or(AppError::BadRequest(
+        "No pending email change for that address".to_string(),
+    ))?;
+
+    verify_otp_guarded(&state, &new_email, &body.code, "verification code").await?;
+
+    // someone else may have claimed the address while this change was pending
+    let taken = sqlx::query_scalar::<_, i32>("SELECT user_id FROM users WHERE email = $1")
+        .bind(&new_email)
+        .fetch_optional(&state.pool)
+        .await?;
+
+    if taken.is_some() {
+        sqlx::query("UPDATE users SET pending_email = NULL WHERE user_id = $1")
+            .bind(user.user_id)
+            .execute(&state.pool)
+            .await
+            .ok();
+        return Err(AppError::Conflict(
+            "That email is already in use".to_string(),
+        ));
+    }
+
+    // the target is always a university address, and entering the code proves
+    // they can read it — that covers both email verification and the manual
+    // review, so the account is active whichever state it was waiting in
+    let was_waiting = matches!(
+        user.status.as_deref(),
+        Some("pending_verification") | Some("pending")
+    );
+    let new_status = "active";
+
+    let updated = sqlx::query_as::<_, User>(
+        r#"UPDATE users
+           SET email = $1, pending_email = NULL, status = $2
+           WHERE user_id = $3
+           RETURNING *"#,
+    )
+    .bind(&new_email)
+    .bind(new_status)
+    .bind(user.user_id)
+    .fetch_one(&state.pool)
+    .await?;
+
+    // an approved account no longer needs the id card on file
+    discard_id_card(&state.pool, &updated).await;
+
+    tracing::info!(
+        "user {} moved to a university address (was waiting: {})",
+        updated.user_id,
+        was_waiting
+    );
+
+    let message = if was_waiting {
+        "Email updated and your account is now active — you can log in"
+    } else {
+        "Email updated — use the new address to log in"
+    };
+
+    Ok(Json(json!({
+        "success": true,
+        "email": updated.email,
+        "status": updated.status,
+        "message": message
+    })))
+}
+
+#[derive(Debug, Deserialize)]
 pub struct StatusQuery {
     pub email: String,
 }
@@ -638,8 +843,9 @@ pub async fn reset_password(
         .map_err(|e| AppError::InternalError(format!("Failed to hash password: {}", e)))?
         .to_string();
 
-    // update the password in the database
-    sqlx::query("UPDATE users SET password = $1 WHERE email = $2")
+    // update the password, and cut every session issued before now — the usual
+    // reason to reset is that someone else may be logged in
+    sqlx::query("UPDATE users SET password = $1, sessions_valid_from = NOW() WHERE email = $2")
         .bind(&hashed)
         .bind(&body.email)
         .execute(&state.pool)

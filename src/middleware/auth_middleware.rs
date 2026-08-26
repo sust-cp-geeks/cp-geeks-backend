@@ -32,7 +32,7 @@ impl FromRequestParts<AppState> for Claims {
 
     async fn from_request_parts(
         parts: &mut Parts,
-        _state: &AppState,
+        state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         // get the "Authorization" header from the request
         let auth_header = parts
@@ -77,6 +77,46 @@ impl FromRequestParts<AppState> for Claims {
             }
         })?;
 
-        Ok(decoded.claims)
+        let claims = decoded.claims;
+
+        // a valid signature isn't enough — the account may have had its sessions
+        // cut since this token was issued (password reset, ban). without this the
+        // token would keep working for the rest of its 7 days.
+        let valid_from = sqlx::query_scalar::<_, Option<chrono::NaiveDateTime>>(
+            "SELECT sessions_valid_from FROM users WHERE user_id = $1",
+        )
+        .bind(claims.user_id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("could not check session validity: {}", e);
+            AuthError {
+                message: "Could not verify session".to_string(),
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+            }
+        })?;
+
+        // outer None = the account is gone
+        let valid_from = valid_from.ok_or(AuthError {
+            message: "Account no longer exists".to_string(),
+            status: StatusCode::UNAUTHORIZED,
+        })?;
+
+        if let Some(cutoff) = valid_from {
+            // a token with no iat predates this check, so treat it as ancient
+            let issued_at = claims.iat.unwrap_or(0);
+            // iat is whole seconds but the cutoff has sub-second precision, and
+            // .timestamp() truncates down — so <= rather than <, otherwise a ban
+            // landing in the same second a token was issued wouldn't revoke it.
+            // erring toward invalidating is the safe direction for a security check.
+            if issued_at <= cutoff.and_utc().timestamp() {
+                return Err(AuthError {
+                    message: "Session expired. Please login again.".to_string(),
+                    status: StatusCode::UNAUTHORIZED,
+                });
+            }
+        }
+
+        Ok(claims)
     }
 }

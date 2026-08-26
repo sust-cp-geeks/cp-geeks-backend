@@ -8,6 +8,9 @@ pub struct Claims {
     pub is_admin: bool,
     pub is_manager: Option<bool>,
     pub exp: i64,
+    // issued-at; optional so tokens minted before this existed still parse,
+    // and those are treated as very old
+    pub iat: Option<i64>,
 }
 
 // helper to create a jwt token for a user that expires in 7 days
@@ -22,7 +25,8 @@ pub fn create_token(
         "Server authentication is misconfigured".to_string()
     })?;
 
-    let expiry = chrono::Utc::now()
+    let now = chrono::Utc::now();
+    let expiry = now
         .checked_add_signed(chrono::Duration::days(7))
         .expect("valid timestamp")
         .timestamp();
@@ -33,6 +37,7 @@ pub fn create_token(
         is_admin,
         is_manager: Some(is_manager),
         exp: expiry,
+        iat: Some(now.timestamp()),
     };
 
     encode(

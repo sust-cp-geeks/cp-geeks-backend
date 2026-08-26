@@ -14,4 +14,9 @@ pub fn routes() -> Router<AppState> {
         .route("/forgot-password", post(auth_handler::forgot_password))
         .route("/reset-password", post(auth_handler::reset_password))
         .route("/status", get(auth_handler::account_status))
+        .route("/change-email", post(auth_handler::request_email_change))
+        .route(
+            "/change-email/verify",
+            post(auth_handler::confirm_email_change),
+        )
 }
