@@ -8,6 +8,9 @@ const CF_TIMEOUT: Duration = Duration::from_secs(10);
 // vjudge returns full standings json, so give it a bit more room
 const VJUDGE_TIMEOUT: Duration = Duration::from_secs(15);
 
+// file uploads move real bytes, so they get a longer leash
+const STORAGE_TIMEOUT: Duration = Duration::from_secs(30);
+
 // how long to wait on the tcp connect itself
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -16,6 +19,7 @@ const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) SUST-CP-Geeks/1.0";
 
 static CF_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 static VJUDGE_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+static STORAGE_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
 fn build(timeout: Duration) -> reqwest::Client {
     reqwest::Client::builder()
@@ -35,4 +39,8 @@ pub fn codeforces() -> &'static reqwest::Client {
 
 pub fn vjudge() -> &'static reqwest::Client {
     VJUDGE_CLIENT.get_or_init(|| build(VJUDGE_TIMEOUT))
+}
+
+pub fn storage() -> &'static reqwest::Client {
+    STORAGE_CLIENT.get_or_init(|| build(STORAGE_TIMEOUT))
 }

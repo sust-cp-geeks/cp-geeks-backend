@@ -1,14 +1,17 @@
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
-use axum::{extract::State, http::StatusCode, Json};
+use axum::extract::{FromRequest, Multipart, Query, Request, State};
+use axum::http::{header::CONTENT_TYPE, StatusCode};
+use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 
 use crate::app_state::AppState;
 use crate::errors::AppError;
 use crate::models::user::{LoginInput, RegisterInput, User};
-use crate::services::{codeforces, email};
+use crate::services::{codeforces, email, image_upload, storage};
 use crate::utils::jwt::create_token;
 use crate::utils::otp;
 use crate::utils::rate_limit;
@@ -23,6 +26,103 @@ pub struct VerifyOtpInput {
 #[derive(Debug, Deserialize)]
 pub struct ResendOtpInput {
     pub email: String,
+}
+
+// the two sides of a student id, already validated and re-encoded
+struct IdCardImages {
+    front: Vec<u8>,
+    back: Vec<u8>,
+}
+
+// registration accepts either json (students with a working @student.sust.edu
+// address) or multipart (everyone else, who must attach their id card), so the
+// existing json clients keep working unchanged
+async fn parse_register_request(
+    request: Request,
+    state: &AppState,
+) -> Result<(RegisterInput, Option<IdCardImages>), AppError> {
+    let is_multipart = request
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.starts_with("multipart/form-data"))
+        .unwrap_or(false);
+
+    if !is_multipart {
+        let Json(body) = Json::<RegisterInput>::from_request(request, state).await?;
+        return Ok((body, None));
+    }
+
+    let mut multipart = Multipart::from_request(request, state)
+        .await
+        .map_err(|e| AppError::BadRequest(format!("Invalid multipart body: {}", e)))?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    let mut front: Option<Vec<u8>> = None;
+    let mut back: Option<Vec<u8>> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("Could not read uploaded form: {}", e)))?
+    {
+        let name = field.name().unwrap_or_default().to_string();
+        match name.as_str() {
+            "id_card_front" | "id_card_back" => {
+                let bytes = field
+                    .bytes()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("Could not read {}: {}", name, e)))?;
+                if name == "id_card_front" {
+                    front = Some(bytes.to_vec());
+                } else {
+                    back = Some(bytes.to_vec());
+                }
+            }
+            _ => {
+                let text = field.text().await.map_err(|e| {
+                    AppError::BadRequest(format!("Could not read field {}: {}", name, e))
+                })?;
+                fields.insert(name, text);
+            }
+        }
+    }
+
+    let required = |key: &str| -> Result<String, AppError> {
+        fields
+            .get(key)
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| AppError::BadRequest(format!("{} is required", key)))
+    };
+    let optional = |key: &str| -> Option<String> {
+        fields
+            .get(key)
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    };
+
+    let body = RegisterInput {
+        reg_number: required("reg_number")?,
+        name: required("name")?,
+        email: required("email")?,
+        password: required("password")?,
+        codeforces_handle: optional("codeforces_handle"),
+        vjudge_handle: optional("vjudge_handle"),
+    };
+
+    let images = match (front, back) {
+        (Some(f), Some(b)) => Some(IdCardImages { front: f, back: b }),
+        (None, None) => None,
+        // one side alone is never useful — say so rather than half-accepting it
+        _ => {
+            return Err(AppError::BadRequest(
+                "Both id_card_front and id_card_back are required".to_string(),
+            ))
+        }
+    };
+
+    Ok((body, images))
 }
 
 // verifies an otp and counts wrong guesses
@@ -63,10 +163,25 @@ async fn verify_otp_guarded(
     Ok(())
 }
 
+// drops images that were uploaded for a registration that then failed
+async fn discard_uploads(keys: &Option<(String, String)>) {
+    if let Some((front, back)) = keys {
+        storage::delete_quietly(front).await;
+        storage::delete_quietly(back).await;
+    }
+}
+
+// students with a working university address skip manual review
+fn is_student_email(email: &str) -> bool {
+    email.trim().to_lowercase().ends_with("@student.sust.edu")
+}
+
 pub async fn register(
     State(state): State<AppState>,
-    Json(body): Json<RegisterInput>,
+    request: Request,
 ) -> Result<(StatusCode, Json<Value>), AppError> {
+    let (body, id_card) = parse_register_request(request, &state).await?;
+
     // validate inputs upfront
     validate_string(&body.name, "Name", 2, 100)?;
     validate_string(&body.reg_number, "Registration number", 5, 50)?;
@@ -99,6 +214,35 @@ pub async fn register(
         validate_string(handle, "VJudge handle", 1, 100)?;
     }
 
+    // anyone without a university address has to prove who they are, since an
+    // admin will be approving them by hand
+    let id_card = match id_card {
+        Some(images) => Some(images),
+        None if is_student_email(&body.email) => None,
+        None => {
+            return Err(AppError::BadRequest(
+                "Registering without an @student.sust.edu email requires id_card_front and id_card_back photos".to_string(),
+            ))
+        }
+    };
+
+    // resize and re-encode before creating anything, so a bad photo fails the
+    // request early instead of leaving a half-made account behind
+    let id_card = match id_card {
+        Some(images) => Some(IdCardImages {
+            front: image_upload::process(&images.front, "ID card front")?,
+            back: image_upload::process(&images.back, "ID card back")?,
+        }),
+        None => None,
+    };
+
+    if id_card.is_some() && !storage::is_configured() {
+        tracing::error!("id card upload attempted but R2 is not configured");
+        return Err(AppError::InternalError(
+            "File storage is not configured — contact an admin".to_string(),
+        ));
+    }
+
     // check if email already exists
     let existing = sqlx::query_scalar::<_, i32>("SELECT user_id FROM users WHERE email = $1")
         .bind(&body.email)
@@ -129,9 +273,39 @@ pub async fn register(
         .map_err(|e| AppError::InternalError(format!("Failed to hash password: {}", e)))?
         .to_string();
 
+    // Everything that can fail against an outside service happens before the
+    // account row is written, so a failure leaves nothing behind. Previously
+    // the row was inserted first and the OTP email sent last — a bounced email
+    // stranded an account that the unique email/reg_number constraints then
+    // blocked the student from re-creating.
+    let id_card_keys = id_card.as_ref().map(|_| image_upload::new_object_keys());
+
+    if let (Some(images), Some((front_key, back_key))) = (id_card, &id_card_keys) {
+        storage::upload(front_key, images.front, image_upload::STORED_CONTENT_TYPE).await?;
+        if let Err(e) =
+            storage::upload(back_key, images.back, image_upload::STORED_CONTENT_TYPE).await
+        {
+            storage::delete_quietly(front_key).await;
+            return Err(e);
+        }
+    }
+
+    // generate and send otp — a send failure now costs only the uploaded images
+    let code = otp::generate_otp();
+    otp::store_otp(&state.pool, &body.email, &code).await?;
+    if let Err(e) = email::send_otp_email(&body.email, &code).await {
+        discard_uploads(&id_card_keys).await;
+        return Err(e);
+    }
+
     // all new registrations start as pending_verification until otp is confirmed
-    let user_id = sqlx::query_scalar::<_, i32>(
-        "INSERT INTO users (reg_number, name, email, password, status, codeforces_handle, vjudge_handle) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING user_id",
+    let (front_path, back_path) = match &id_card_keys {
+        Some((f, b)) => (Some(f.as_str()), Some(b.as_str())),
+        None => (None, None),
+    };
+
+    let inserted = sqlx::query_scalar::<_, i32>(
+        "INSERT INTO users (reg_number, name, email, password, status, codeforces_handle, vjudge_handle, id_card_front_path, id_card_back_path) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING user_id",
     )
     .bind(&body.reg_number)
     .bind(&body.name)
@@ -140,13 +314,27 @@ pub async fn register(
     .bind("pending_verification")
     .bind(cf_handle)
     .bind(vjudge_handle)
+    .bind(front_path)
+    .bind(back_path)
     .fetch_one(&state.pool)
-    .await?;
+    .await;
 
-    // generate and send otp
-    let code = otp::generate_otp();
-    otp::store_otp(&state.pool, &body.email, &code).await?;
-    email::send_otp_email(&body.email, &code).await?;
+    let user_id = match inserted {
+        Ok(id) => id,
+        Err(e) => {
+            discard_uploads(&id_card_keys).await;
+            // two people racing on the same email or reg_number get past the
+            // checks above and collide here — that's a conflict, not a 500
+            if let sqlx::Error::Database(db) = &e {
+                if db.code().as_deref() == Some("23505") {
+                    return Err(AppError::Conflict(
+                        "Email or registration number already registered".to_string(),
+                    ));
+                }
+            }
+            return Err(e.into());
+        }
+    };
 
     Ok((
         StatusCode::CREATED,
@@ -320,6 +508,50 @@ pub async fn login(
             "is_admin": user.is_admin,
             "is_manager": user.is_manager
         }
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StatusQuery {
+    pub email: String,
+}
+
+// lets someone waiting on manual approval see where they stand without being
+// able to log in yet — returns the status only, never any personal data
+pub async fn account_status(
+    State(state): State<AppState>,
+    Query(query): Query<StatusQuery>,
+) -> Result<Json<Value>, AppError> {
+    validate_email(&query.email)?;
+
+    // public and unauthenticated, so keep it from being used to sweep addresses
+    state.limiter.check(
+        &rate_limit::login_key(&query.email),
+        rate_limit::LOGIN_MAX_ATTEMPTS,
+        rate_limit::LOGIN_WINDOW,
+    )?;
+
+    let status = sqlx::query_scalar::<_, String>("SELECT status FROM users WHERE email = $1")
+        .bind(&query.email)
+        .fetch_optional(&state.pool)
+        .await?;
+
+    let status = status.ok_or(AppError::NotFound(
+        "No account found with this email".to_string(),
+    ))?;
+
+    let message = match status.as_str() {
+        "pending_verification" => "Check your email for the verification code",
+        "pending" => "Your account is waiting for an admin to review it",
+        "active" => "Your account is active — you can log in",
+        "rejected" => "Your account was not approved",
+        _ => "Unknown account status",
+    };
+
+    Ok(Json(json!({
+        "success": true,
+        "status": status,
+        "message": message
     })))
 }
 

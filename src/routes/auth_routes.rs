@@ -1,6 +1,9 @@
 use crate::app_state::AppState;
 use crate::handlers::auth_handler;
-use axum::{routing::post, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -10,4 +13,5 @@ pub fn routes() -> Router<AppState> {
         .route("/resend-otp", post(auth_handler::resend_otp_handler))
         .route("/forgot-password", post(auth_handler::forgot_password))
         .route("/reset-password", post(auth_handler::reset_password))
+        .route("/status", get(auth_handler::account_status))
 }

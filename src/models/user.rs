@@ -15,6 +15,8 @@ pub struct User {
     pub is_manager: Option<bool>,
     pub status: Option<String>,
     pub id_card_path: Option<String>,
+    pub id_card_front_path: Option<String>,
+    pub id_card_back_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -62,7 +62,11 @@ fn build_cors() -> CorsLayer {
 
 #[tokio::main]
 async fn main() {
-    dotenvy::dotenv().ok();
+    // a malformed line makes dotenvy stop, silently dropping every variable
+    // after it — worth a loud warning rather than a mystery later
+    if let Err(e) = dotenvy::dotenv() {
+        eprintln!("warning: could not fully load .env: {e}");
+    }
 
     // RUST_LOG overrides this — the default shows request logs from TraceLayer
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()

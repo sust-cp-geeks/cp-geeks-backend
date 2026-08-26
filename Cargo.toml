@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 # Web framework
-axum = "0.8"
+axum = { version = "0.8", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }
 
 # Serialization
@@ -52,3 +52,7 @@ uuid = { version = "1", features = ["v4"] }
 
 # Async utilities (try_join_all for parallel fetching)
 futures = "0.3"
+
+
+# ID card images: decode to validate, resize, re-encode (which drops EXIF)
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }

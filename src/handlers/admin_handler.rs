@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use crate::app_state::AppState;
 use crate::errors::{require_admin, AppError};
 use crate::models::user::User;
+use crate::services::storage;
 use crate::utils::jwt::Claims;
 
 #[derive(Debug, Deserialize)]
@@ -67,6 +68,69 @@ pub async fn admin_get_user(
     Ok(Json(json!({"success": true, "data": user})))
 }
 
+// short-lived links so an admin can look at a pending student's id card
+// without the bucket ever being public
+pub async fn admin_get_id_card(
+    claims: Claims,
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+) -> Result<Json<Value>, AppError> {
+    require_admin(&claims)?;
+
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE user_id = $1")
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?;
+
+    let user = user.ok_or(AppError::NotFound("User not found".to_string()))?;
+
+    let (front, back) = match (&user.id_card_front_path, &user.id_card_back_path) {
+        (Some(f), Some(b)) => (f, b),
+        _ => {
+            return Err(AppError::NotFound(
+                "This user has no ID card on file".to_string(),
+            ))
+        }
+    };
+
+    tracing::info!("admin {} viewed id card of user {}", claims.user_id, id);
+
+    Ok(Json(json!({
+        "success": true,
+        "data": {
+            "front_url": storage::view_url(front).await?,
+            "back_url": storage::view_url(back).await?,
+            "expires_in_seconds": 300
+        }
+    })))
+}
+
+// once a decision is made the photos have served their purpose, so drop them —
+// keeps storage flat and avoids holding identity documents we no longer need
+async fn discard_id_card(pool: &sqlx::PgPool, user: &User) {
+    let mut removed = false;
+    for key in [&user.id_card_front_path, &user.id_card_back_path]
+        .into_iter()
+        .flatten()
+    {
+        storage::delete_quietly(key).await;
+        removed = true;
+    }
+
+    if removed {
+        let cleared = sqlx::query(
+            "UPDATE users SET id_card_front_path = NULL, id_card_back_path = NULL WHERE user_id = $1",
+        )
+        .bind(user.user_id)
+        .execute(pool)
+        .await;
+
+        if let Err(e) = cleared {
+            tracing::warn!("could not clear id card paths for {}: {}", user.user_id, e);
+        }
+    }
+}
+
 // approve a user so they can log in
 pub async fn admin_approve_user(
     claims: Claims,
@@ -95,6 +159,8 @@ pub async fn admin_approve_user(
     .bind(id)
     .fetch_one(&state.pool)
     .await?;
+
+    discard_id_card(&state.pool, &updated).await;
 
     Ok(Json(json!({
         "success": true,
@@ -132,6 +198,8 @@ pub async fn admin_reject_user(
     .bind(id)
     .fetch_one(&state.pool)
     .await?;
+
+    discard_id_card(&state.pool, &updated).await;
 
     let message = match &body.reason {
         Some(reason) => format!("User '{}' rejected. Reason: {}", updated.name, reason),
