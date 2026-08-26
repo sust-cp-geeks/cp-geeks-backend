@@ -29,7 +29,21 @@ Every error follows this shape:
 | `403` | Insufficient permissions (not admin/manager) |
 | `404` | Resource not found |
 | `409` | Conflict (e.g. duplicate email) |
+| `429` | Too many attempts — rate limited |
 | `500` | Internal server error |
+
+## Rate Limits
+
+Auth endpoints are rate limited. The `429` body states how long to wait.
+
+| Action | Limit | Counted per | Window |
+|--------|-------|-------------|--------|
+| Wrong OTP code | 5 | email | 15 min — also invalidates the live code |
+| Failed login | 10 | email | 15 min — reset by a successful login |
+| OTP emails (register + resend + forgot, combined) | 5 | email | 1 hour |
+| `POST /api/ranker/analyze` | 10 | IP address | 5 min |
+
+Counters are held in memory, so restarting the server clears them.
 
 ---
 
@@ -42,14 +56,31 @@ Register ──> OTP Email ──> Verify OTP ──> Login ──> JWT Token
                               Other email? ─┘──> status: pending (admin approval needed)
 ```
 
+Two ways to register:
+
+| Door | How | Outcome |
+|------|-----|---------|
+| **A — has university email** | JSON body, no ID card | OTP verified → `active` straight away |
+| **B — no university email yet** | multipart body **with ID card photos** | OTP verified → `pending`, an admin reviews the card |
+
+A Door B student can move onto their university address later with
+`POST /api/auth/change-email`, which activates the account without admin
+review and deletes their stored ID card.
+
 ### User Status Lifecycle
 
 | Status | Can Login? | How to reach |
 |--------|-----------|--------------|
 | `pending_verification` | No | Just registered, OTP not verified |
 | `pending` | No | Email verified, waiting for admin approval (non-SUST) |
-| `active` | Yes | Email verified (SUST) or admin approved |
-| `rejected` | No | Admin rejected the user |
+| `active` | Yes | Email verified (SUST), admin approved, or moved onto a SUST address |
+| `rejected` | No | Admin rejected or banned the user |
+
+Check any account's status without logging in: `GET /api/auth/status?email=...`
+
+**Sessions.** Tokens last 7 days, but a password reset, a ban, or an admin
+changing someone's email invalidates every token issued before that moment —
+those requests return `401 "Session expired. Please login again."`
 
 ---
 
@@ -78,8 +109,33 @@ Create a new account. Sends a 6-digit OTP to the provided email.
 | `name` | string | Yes | 2-100 characters |
 | `email` | string | Yes | Must be valid email format |
 | `password` | string | Yes | 6-255 characters |
-| `codeforces_handle` | string | Yes | Validated against Codeforces API |
-| `vjudge_handle` | string | Yes | VJudge username |
+| `codeforces_handle` | string | No | 1-50 chars, validated against the Codeforces API |
+| `vjudge_handle` | string | No | 1-100 chars, not verified (VJudge has no public lookup) |
+
+Both handles are trimmed; an empty string counts as "not provided".
+`vjudge_handle` is how the ranker maps VJudge standings to real names, so a
+user without one shows as `unregistered` in results.
+
+**Registering without a university email (Door B)**
+
+Send the same fields as `multipart/form-data` plus two ID card photos. Anything
+that is not an `@student.sust.edu` address **requires** them.
+
+| Part | Required | Notes |
+|------|----------|-------|
+| `id_card_front` | Yes | JPEG / PNG / WebP, max 5 MB |
+| `id_card_back` | Yes | Same |
+
+Images are checked by file signature (not the filename or `Content-Type`),
+resized to 1600px, and re-encoded — which strips EXIF, including GPS data. They
+are stored privately and deleted once an admin approves or rejects the account.
+
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+  -F "reg_number=2021331083" -F "name=Niloy Chandra Deb" \
+  -F "email=someone@gmail.com" -F "password=test123456" \
+  -F "id_card_front=@front.jpg" -F "id_card_back=@back.jpg"
+```
 
 **Success (201):**
 ```json
@@ -92,8 +148,12 @@ Create a new account. Sends a 6-digit OTP to the provided email.
 ```
 
 **Errors:**
-- `400` — Invalid Codeforces handle / validation failure
-- `409` — Email already registered
+- `400` — Validation failure, invalid Codeforces handle, unreadable/oversized image, only one ID card side sent, or a non-SUST email with no ID card
+- `409` — Email or registration number already registered
+- `429` — Too many OTP emails for this address
+
+Nothing is created if any step fails — a bounced OTP email does not leave a
+half-made account behind.
 
 ---
 
@@ -255,6 +315,85 @@ Verify the reset OTP and set a new password. This is a single-step endpoint — 
 
 ---
 
+### GET `/api/auth/status`
+Check where an account stands without logging in — useful while a student is
+waiting on admin approval.
+
+**Access:** Public
+
+`GET /api/auth/status?email=someone@gmail.com`
+
+**Success (200):**
+```json
+{
+  "success": true,
+  "status": "pending",
+  "message": "Your account is waiting for an admin to review it"
+}
+```
+
+Returns the status string only, never personal data.
+
+**Errors:** `404` — no account with that email · `429` — rate limited
+
+---
+
+### POST `/api/auth/change-email`
+Move an account onto an `@student.sust.edu` address. Step 1 of 2.
+
+**Access:** Public — authenticated by **password**, not a token, because
+`pending` accounts cannot log in and so have no token to present.
+
+**Request:**
+```json
+{
+  "current_email": "someone@gmail.com",
+  "password": "test123456",
+  "new_email": "2021331083@student.sust.edu"
+}
+```
+
+The 6-digit code is sent to `new_email` — receiving it is what proves ownership.
+
+**Errors:**
+- `400` — target is not an `@student.sust.edu` address, or is already your address
+- `401` — wrong password or unknown account
+- `403` — account is rejected
+- `409` — that address is already in use
+- `429` — rate limited
+
+Re-sending the same request re-issues the code; it does not conflict with itself.
+
+---
+
+### POST `/api/auth/change-email/verify`
+Step 2 of 2. Completes the change.
+
+**Access:** Public
+
+**Request:**
+```json
+{ "new_email": "2021331083@student.sust.edu", "code": "123456" }
+```
+
+**Success (200):**
+```json
+{
+  "success": true,
+  "email": "2021331083@student.sust.edu",
+  "status": "active",
+  "message": "Email updated and your account is now active — you can log in"
+}
+```
+
+The account becomes `active` regardless of which waiting state it was in, and
+any stored ID card is deleted — reading a university inbox establishes exactly
+what the manual review was for.
+
+**Errors:** `400` — no pending change for that address, or wrong/expired code · `409` — address taken in the meantime
+
+---
+
 ## 2. User Profile
 
 ### GET `/api/users/me`
@@ -299,9 +438,13 @@ Update profile. All fields are optional — only send what you want to change.
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `name` | string | No | 2-100 characters |
-| `vjudge_handle` | string | No | VJudge username |
-| `codeforces_handle` | string | No | Validated against CF API if provided |
+| `name` | string | No | 2-100 characters, trimmed |
+| `vjudge_handle` | string | No | 1-100 characters, trimmed |
+| `codeforces_handle` | string | No | 1-50 characters, validated against the CF API |
+
+Lengths count **characters, not bytes**, so a Bengali name is not cut short.
+Sending `""` for either handle clears it to `null`; omitting a field leaves it
+unchanged. An oversized value is a `400`, not a `500`.
 
 **Success (200):**
 ```json

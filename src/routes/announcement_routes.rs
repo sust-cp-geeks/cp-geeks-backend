@@ -9,6 +9,7 @@ pub fn routes() -> Router<AppState> {
             get(announcement_handler::get_announcements)
                 .post(announcement_handler::create_announcement),
         )
+        .route("/categories", get(announcement_handler::get_categories))
         .route(
             "/{id}",
             get(announcement_handler::get_announcement)
