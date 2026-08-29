@@ -2,3 +2,6 @@
 .env
 /docs/curl_testing.sh
 /docs/manual_test.md
+/docs/backlog.md
+/docs/frontend-spec.md
+/docs/frontend-migration.md
