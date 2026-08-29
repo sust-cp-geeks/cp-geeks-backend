@@ -44,10 +44,23 @@ pub struct Announcement {
     pub created_at: Option<NaiveDateTime>,
     // null until the post is edited
     pub updated_at: Option<NaiveDateTime>,
+    // pinned posts sort above everything else
+    pub is_pinned: bool,
+    // an arbitrary outbound link, plus the text the button should show
+    pub link_url: Option<String>,
+    pub link_label: Option<String>,
+    // optional ties to something already in the system
+    pub event_id: Option<i32>,
+    pub contest_no: Option<i32>,
     // joined from users so the feed can show a byline without a second request.
     // stays None if the author's account was deleted.
     #[sqlx(default)]
     pub author_name: Option<String>,
+    // joined so the frontend can label the tie without another request
+    #[sqlx(default)]
+    pub event_description: Option<String>,
+    #[sqlx(default)]
+    pub contest_title: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -56,6 +69,11 @@ pub struct CreateAnnouncement {
     pub content: String,
     pub category: Option<String>,
     pub event_date: Option<String>,
+    pub is_pinned: Option<bool>,
+    pub link_url: Option<String>,
+    pub link_label: Option<String>,
+    pub event_id: Option<i32>,
+    pub contest_no: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,4 +82,18 @@ pub struct UpdateAnnouncement {
     pub content: Option<String>,
     pub category: Option<String>,
     pub event_date: Option<String>,
+    pub is_pinned: Option<bool>,
+    pub link_url: Option<String>,
+    pub link_label: Option<String>,
+    pub event_id: Option<i32>,
+    pub contest_no: Option<i32>,
+}
+
+// filters for the list endpoint
+#[derive(Debug, Deserialize)]
+pub struct AnnouncementQuery {
+    pub category: Option<String>,
+    // only posts whose event_date is still ahead, soonest first
+    pub upcoming: Option<bool>,
+    pub limit: Option<i64>,
 }
