@@ -468,6 +468,29 @@ unchanged. An oversized value is a `400`, not a `500`.
 
 ---
 
+### GET `/api/users/{id}`
+Look up a single user by id.
+
+**Access:** Public — no token required
+
+**Errors:** `404` — no such user
+
+---
+
+### GET `/api/users/search`
+Search users by name. `GET /api/users/search?name=ne`
+
+**Access:** Public — no token required
+
+Returns at most 10 matches. Omitting `name` returns the first 10 users.
+
+> **Note:** both of these are public and return each user's `email` and
+> `reg_number`. That is a known open issue — locking them down changes a
+> response the frontend consumes, so it is being handled together with the
+> frontend work rather than piecemeal.
+
+---
+
 ## 3. Codeforces Stats
 
 ### GET `/api/cf/profile/{user_id}`
@@ -594,6 +617,23 @@ Community leaderboard of all active registered users ranked by Codeforces rating
 
 ---
 
+## Date Formats
+
+Anywhere a datetime is accepted (`contest_date`, `event_date`), these all parse:
+
+| Format | Example |
+|--------|---------|
+| Canonical | `2026-09-01T18:00:00` |
+| Without seconds | `2026-09-01T18:00` |
+| Space separated | `2026-09-01 18:00:00` |
+| RFC 3339 with offset | `2026-09-01T18:00:00Z` — normalised to UTC |
+| Empty string | `""` — clears the field |
+
+Anything else is a `400`. Previously a malformed date was silently stored as
+`null`.
+
+---
+
 ## 4. Contests
 
 ### GET `/api/contests`
@@ -680,27 +720,61 @@ Delete a contest.
 ## 5. Announcements
 
 ### GET `/api/announcements`
-List all announcements.
+List announcements. **Pinned posts always come first**, then the chosen ordering.
 
-**Access:** User (requires token)
+**Access:** User (requires token) — announcements are not public
+
+**Query parameters** (all optional):
+
+| Param | Effect |
+|-------|--------|
+| `category` | Only this category. Case-insensitive; an unknown value is a `400` |
+| `upcoming` | `true` → only posts whose `event_date` is still ahead, **soonest first** |
+| `limit` | How many to return. Default `50`, clamped to `1-100` |
+
+Without `upcoming`, the feed is newest-first by `created_at`.
+
+```
+GET /api/announcements?upcoming=true
+GET /api/announcements?category=Contest&limit=10
+```
 
 **Success (200):**
 ```json
 {
   "success": true,
+  "count": 1,
   "data": [
     {
-      "announcement_id": 1,
+      "post_id": 12,
       "author_id": 5,
-      "title": "Welcome to SUST CP Geeks",
-      "content": "We are excited to launch...",
-      "category": "general",
-      "event_date": null,
-      "created_at": "2026-03-28T10:00:00"
+      "author_name": "Faiyaz Ismail",
+      "title": "TFC Registration Open",
+      "content": "Register before Friday.",
+      "category": "Contest",
+      "event_date": "2027-01-15T15:00:00",
+      "created_at": "2026-08-19T18:30:12",
+      "updated_at": null,
+      "is_pinned": true,
+      "link_url": "https://vjudge.net/contest/650000",
+      "link_label": "Register here",
+      "event_id": null,
+      "contest_no": 1,
+      "event_description": null,
+      "contest_title": "TFC Round 8"
     }
   ]
 }
 ```
+
+| Field | Notes |
+|-------|-------|
+| `author_name` | Joined from users. `null` if that account was deleted |
+| `updated_at` | `null` until the post is edited |
+| `is_pinned` | Pinned posts sort above everything else |
+| `link_url` / `link_label` | One outbound link — contest, blog, article or video — and its button text |
+| `event_id` / `contest_no` | Optional tie to something already in the system |
+| `event_description` / `contest_title` | Joined name of that tie, so you can label the link without another request |
 
 ---
 
@@ -711,18 +785,34 @@ Get a single announcement.
 
 ---
 
-### POST `/api/announcements`
-Create a new announcement.
+### GET `/api/announcements/categories`
+The category values the API accepts. Build your dropdown from this rather than
+hardcoding it.
 
-**Access:** Admin only
+**Access:** Public
+
+```json
+{ "success": true, "data": ["Contest", "Result", "Notice", "Update", "General"] }
+```
+
+---
+
+### POST `/api/announcements`
+Create a new announcement. The author is taken from your token.
+
+**Access:** Admin **or Manager**
 
 **Request:**
 ```json
 {
-  "title": "Weekly Contest Reminder",
-  "content": "This week's contest will be held on...",
-  "category": "contest",
-  "event_date": "2026-04-10T20:00:00"
+  "title": "TFC Round 8 Registration",
+  "content": "Register before Friday. Room 630, bring your own laptop.",
+  "category": "Contest",
+  "event_date": "2027-01-15T15:00:00",
+  "is_pinned": true,
+  "link_url": "https://vjudge.net/contest/650000",
+  "link_label": "Register here",
+  "contest_no": 1
 }
 ```
 
@@ -730,22 +820,53 @@ Create a new announcement.
 |-------|------|----------|-------|
 | `title` | string | Yes | 1-255 characters |
 | `content` | string | Yes | 1-10000 characters |
-| `category` | string | No | e.g. "general", "contest", "event" |
-| `event_date` | string | No | ISO 8601 datetime (`YYYY-MM-DDTHH:MM:SS`) |
+| `category` | string | No | One of `Contest`, `Result`, `Notice`, `Update`, `General` |
+| `event_date` | string | No | See [Date Formats](#date-formats) |
+| `is_pinned` | bool | No | Defaults to `false` |
+| `link_url` | string | No | Max 500 chars, **must start with `http://` or `https://`** |
+| `link_label` | string | No | Max 100 chars. Button text. Requires `link_url` |
+| `event_id` | int | No | Ties the post to an event. `404` if it doesn't exist |
+| `contest_no` | int | No | Ties the post to a contest. `404` if it doesn't exist |
+
+**About the link.** One outbound link per post, meant for a contest, blog,
+article or video. Only `http`/`https` is accepted — `javascript:` and `data:`
+URLs are rejected with a `400`, since this value ends up as an anchor in the
+frontend. Sending `link_label` without `link_url` is a `400`.
+
+Deleting a referenced event or contest clears the tie; the post itself stays.
+
+Category matching is case-insensitive and stored canonically — send `contest`,
+get `Contest`. An unknown value is a `400` listing the valid ones. Omitting it,
+or sending `""`, means no category.
+
+Every read returns `author_name` (joined from users, `null` if that account was
+deleted) and `updated_at` (`null` until the post is edited).
 
 ---
 
 ### PUT `/api/announcements/{id}`
-Update an announcement. All fields optional.
+Update an announcement. All fields optional — omitted fields keep their current
+value. Stamps `updated_at`.
 
-**Access:** Admin only
+**Access:** Admin **or Manager**
+
+Link editing:
+
+| Sent | Result |
+|------|--------|
+| `link_url` + `link_label` | Both replaced |
+| `link_label` only | Label replaced, existing URL kept |
+| neither | Both unchanged |
+| `link_url: ""` | Link cleared — **label is cleared too** |
+
+Pin or unpin with `{"is_pinned": true}` / `{"is_pinned": false}`.
 
 ---
 
 ### DELETE `/api/announcements/{id}`
 Delete an announcement.
 
-**Access:** Admin only
+**Access:** Admin **or Manager**
 
 ---
 
@@ -919,9 +1040,104 @@ Reject a pending user.
 ---
 
 ### PUT `/api/admin/users/{id}/ban`
-Ban an active user. Admins cannot ban themselves.
+Ban an active user. Admins cannot ban themselves. Ends the user's sessions
+immediately.
 
 **Access:** Admin only
+
+---
+
+### GET `/api/admin/users/{id}/id-card`
+Short-lived links to a pending student's ID card photos, for reviewing a Door B
+registration. The bucket is private; these are the only way to view them.
+
+**Access:** Admin only
+
+**Success (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "front_url": "https://...supabase.co/storage/v1/object/sign/...",
+    "back_url": "https://...",
+    "expires_in_seconds": 300
+  }
+}
+```
+
+Both links expire after 5 minutes. The photos are deleted once the account is
+approved or rejected, after which this returns `404`.
+
+---
+
+### PUT `/api/admin/users/{id}/reactivate`
+Undo a ban or a rejection — sets the account back to `active`. `approve` only
+accepts `pending`, so without this a mistaken ban was permanent.
+
+**Access:** Admin only
+
+**Errors:** `400` — user is already active · `404` — no such user
+
+---
+
+### PUT `/api/admin/users/{id}/email`
+Correct a mistyped address. A student who typos their email never receives the
+code and cannot self-serve a fix, since `change-email` only accepts university
+addresses.
+
+**Access:** Admin only
+
+**Request:** `{ "email": "corrected@example.com" }`
+
+Ends the user's sessions, since the address changed under them.
+
+**Errors:** `409` — that address is already in use
+
+---
+
+### DELETE `/api/admin/users/{id}`
+Remove an account outright. Also deletes any stored ID card. Admins cannot
+delete themselves.
+
+**Access:** Admin only
+
+**Errors:** `400` — deleting yourself · `409` — the user has written announcements
+
+---
+
+## 8. Problemset
+
+Curated practice material, grouped as sections → subsections → items.
+
+### GET `/api/problems`
+The full tree in one response.
+
+**Access:** Public
+
+---
+
+### POST `/api/problems/sections`
+**Access:** Admin only · `{ "name": "Graph Theory", "description": "..." }`
+
+### POST `/api/problems/subsections`
+**Access:** Admin only · `{ "section_id": 1, "name": "BFS and DFS", "description": "..." }`
+
+### POST `/api/problems/items`
+**Access:** Admin only
+
+```json
+{
+  "subsection_id": 1,
+  "item_type": "problem",
+  "title": "Shortest Path",
+  "url": "https://codeforces.com/problemset/problem/20/C",
+  "platform": "Codeforces"
+}
+```
+
+`url` must start with `http://` or `https://`. An unknown `section_id` or
+`subsection_id` returns `404`. These three return `{"success": true}` with
+status `200` and no id — re-fetch `GET /api/problems` to see the new row.
 
 ---
 
@@ -931,6 +1147,14 @@ Ban an active user. Admins cannot ban themselves.
 Analyze one or more VJudge contests and produce a ranked leaderboard. Fetches contest data directly from VJudge by contest ID.
 
 **Access:** Public (no token required)
+
+**Limits:** at most **50** contest IDs per request (each one is a separate
+outbound VJudge fetch), and **10 requests per 5 minutes per IP**. Results are
+cached for 6 hours for PDF download and are lost when the server restarts.
+
+`problem_weights` is reflected in the reported `total_score` but does **not**
+affect ranking order — rankings sort on raw solve count, then penalty, then
+upsolved, with handle as a final tiebreak so equal rows stay stable between runs.
 
 **Request:**
 ```json
@@ -997,6 +1221,18 @@ Analyze one or more VJudge contests and produce a ranked leaderboard. Fetches co
 - `400` — Empty title or empty contest_ids
 - `400` — VJudge contest not found / not accessible
 - `500` — VJudge API unreachable
+
+---
+
+### GET `/api/ranker/contest-title/{id}`
+Fetch a VJudge contest's title. Useful for confirming an ID is reachable before
+running a full analysis.
+
+**Access:** Public
+
+```json
+{ "success": true, "title": "SUST Intra Contest 2026" }
+```
 
 ---
 
