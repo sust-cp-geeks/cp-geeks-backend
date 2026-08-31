@@ -5,10 +5,11 @@ use sqlx::FromRow;
 #[derive(Debug, FromRow, Serialize)]
 pub struct Event {
     pub event_id: i32,
+    pub title: String,
     pub description: String,
-    pub event_date: NaiveDateTime,
     pub created_at: Option<NaiveDateTime>,
     pub vjudge_contest_ids: Option<Vec<i64>>,
+    pub merged_handles: Option<sqlx::types::Json<serde_json::Value>>,
 }
 
 #[derive(Debug, FromRow, Serialize)]
@@ -28,17 +29,19 @@ pub struct TeamMember {
 // input for creating an event
 #[derive(Debug, Deserialize)]
 pub struct CreateEventInput {
+    pub title: String,
     pub description: String,
-    pub event_date: String,
     pub vjudge_contest_ids: Option<Vec<i64>>,
+    pub merged_handles: Option<serde_json::Value>,
 }
 
 // input for updating an event (all fields optional for partial updates)
 #[derive(Debug, Deserialize)]
 pub struct UpdateEventInput {
+    pub title: Option<String>,
     pub description: Option<String>,
-    pub event_date: Option<String>,
     pub vjudge_contest_ids: Option<Vec<i64>>,
+    pub merged_handles: Option<serde_json::Value>,
 }
 
 // input for creating or updating a team
@@ -67,8 +70,9 @@ pub struct TeamWithMembers {
 #[derive(Debug, Serialize)]
 pub struct EventResponse {
     pub event_id: i32,
+    pub title: String,
     pub description: String,
-    pub event_date: NaiveDateTime,
     pub vjudge_contest_ids: Option<Vec<i64>>,
+    pub merged_handles: Option<serde_json::Value>,
     pub teams: Vec<TeamWithMembers>,
 }

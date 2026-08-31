@@ -109,6 +109,13 @@ async fn main() {
 
     // db pool for neon postgres
     let pool = config::database::connect().await;
+
+    // automatically run any pending database migrations
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("Failed to apply database migrations");
+
     let state = AppState::new(pool);
 
     let app = Router::new()
