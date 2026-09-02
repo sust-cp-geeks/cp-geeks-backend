@@ -9,6 +9,7 @@ use serde_json::json;
 use crate::services::atcoder;
 
 pub const ATCODER: &str = "atcoder";
+pub const CODEFORCES: &str = "codeforces";
 
 // how often a full pass runs. a pass is one polite request pair per member, so
 // with a few hundred members it takes minutes — nowhere near a request path.
@@ -176,6 +177,13 @@ async fn build_solve_counts(handle: &str) -> Result<serde_json::Value, String> {
 // records why a member could not be synced, so a bad handle is visible rather
 // than the member simply being absent from the leaderboard
 async fn record_failure(pool: &PgPool, target: &Target, reason: &str) {
+    record_failure_for(pool, ATCODER, target, reason).await;
+}
+
+// note what is absent from the update list: rating, max_rating, rank_title and
+// the solve counts are left exactly as they were. a failed pass marks the row
+// stale and says why, and the leaderboard keeps serving the last real numbers.
+async fn record_failure_for(pool: &PgPool, platform: &str, target: &Target, reason: &str) {
     let _ = sqlx::query(
         r#"INSERT INTO platform_profiles
              (user_id, platform, handle, synced_at, sync_error)
@@ -184,7 +192,7 @@ async fn record_failure(pool: &PgPool, target: &Target, reason: &str) {
              handle = $3, synced_at = NOW(), sync_error = $4"#,
     )
     .bind(target.user_id)
-    .bind(ATCODER)
+    .bind(platform)
     .bind(&target.handle)
     .bind(reason)
     .execute(pool)
@@ -283,11 +291,120 @@ pub async fn sync_atcoder(pool: &PgPool) -> (usize, usize) {
     (ok, failed)
 }
 
-// background loop; nothing on the request path ever calls atcoder
+// codeforces takes every handle in one user.info call, so a whole club costs a
+// single request. that is why this pass has no per-member delay and no partial
+// failures: either the call lands or nobody is updated this round.
+pub async fn sync_codeforces(pool: &PgPool) -> (usize, usize) {
+    let targets = sqlx::query_as::<_, (i32, String)>(
+        r#"SELECT user_id, codeforces_handle FROM users
+           WHERE codeforces_handle IS NOT NULL AND codeforces_handle <> ''
+           ORDER BY user_id"#,
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|(user_id, handle)| Target { user_id, handle })
+    .collect::<Vec<_>>();
+
+    if targets.is_empty() {
+        return (0, 0);
+    }
+
+    tracing::info!("codeforces sync starting for {} members", targets.len());
+
+    let handles = targets
+        .iter()
+        .map(|t| t.handle.as_str())
+        .collect::<Vec<_>>()
+        .join(";");
+    let url = format!("https://codeforces.com/api/user.info?handles={handles}");
+
+    let fetched = async {
+        let response = crate::services::http::codeforces()
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("could not reach codeforces: {e}"))?;
+        let body = response
+            .json::<crate::models::codeforces::CfApiResponse<
+                Vec<crate::models::codeforces::CfUserInfo>,
+            >>()
+            .await
+            .map_err(|e| format!("could not parse user.info: {e}"))?;
+        if body.status != "OK" {
+            return Err(body
+                .comment
+                .unwrap_or_else(|| "codeforces returned a non-OK status".to_string()));
+        }
+        Ok(body.result.unwrap_or_default())
+    }
+    .await;
+
+    let users = match fetched {
+        Ok(u) => u,
+        Err(reason) => {
+            // leave the stored rows alone. a codeforces outage should cost the
+            // leaderboard its freshness, never its contents
+            tracing::warn!("codeforces sync failed: {}", reason);
+            for target in &targets {
+                record_failure_for(pool, CODEFORCES, target, &reason).await;
+            }
+            return (0, targets.len());
+        }
+    };
+
+    let by_handle: HashMap<String, &crate::models::codeforces::CfUserInfo> = users
+        .iter()
+        .map(|u| (u.handle.to_lowercase(), u))
+        .collect();
+
+    let (mut ok, mut failed) = (0, 0);
+    for target in &targets {
+        let Some(info) = by_handle.get(&target.handle.to_lowercase()) else {
+            // asked for and not returned means the handle no longer exists
+            record_failure_for(pool, CODEFORCES, target, "handle not found on codeforces").await;
+            failed += 1;
+            continue;
+        };
+
+        let written = sqlx::query(
+            r#"INSERT INTO platform_profiles
+                 (user_id, platform, handle, rating, max_rating, rank_title,
+                  synced_at, sync_error)
+               VALUES ($1, $2, $3, $4, $5, $6, NOW(), NULL)
+               ON CONFLICT (user_id, platform) DO UPDATE SET
+                 handle = $3, rating = $4, max_rating = $5, rank_title = $6,
+                 synced_at = NOW(), sync_error = NULL"#,
+        )
+        .bind(target.user_id)
+        .bind(CODEFORCES)
+        .bind(&info.handle)
+        .bind(info.rating)
+        .bind(info.max_rating)
+        .bind(info.rank.as_deref())
+        .execute(pool)
+        .await;
+
+        match written {
+            Ok(_) => ok += 1,
+            Err(e) => {
+                tracing::warn!("could not store codeforces row for {}: {}", target.handle, e);
+                failed += 1;
+            }
+        }
+    }
+
+    tracing::info!("codeforces sync finished: {} ok, {} failed", ok, failed);
+    (ok, failed)
+}
+
+// background loop; nothing on the request path ever calls atcoder or codeforces
 pub fn spawn(pool: PgPool) {
     tokio::spawn(async move {
         tokio::time::sleep(STARTUP_DELAY).await;
         loop {
+            sync_codeforces(&pool).await;
             sync_atcoder(&pool).await;
             tokio::time::sleep(SYNC_INTERVAL).await;
         }

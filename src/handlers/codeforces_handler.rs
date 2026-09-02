@@ -43,94 +43,45 @@ pub async fn get_leaderboard(
     _claims: Claims,
     State(state): State<AppState>,
 ) -> Result<Json<Value>, AppError> {
-    // fetch all active users who have a cf handle, ordered by handle
-    let rows = sqlx::query_as::<_, (i32, String, String)>(
-        r#"SELECT user_id, name, codeforces_handle
-           FROM users
-           WHERE status IN ('active', 'pending', 'pending_verification')
-             AND codeforces_handle IS NOT NULL
-             AND codeforces_handle != ''
-           ORDER BY name ASC"#,
+    // read what the background sync stored. this used to ask codeforces for
+    // every rating while the page was loading, so a codeforces outage emptied
+    // the leaderboard entirely — now an outage only means the numbers are as
+    // fresh as the last successful pass.
+    let rows = sqlx::query_as::<_, (i32, String, String, Option<i32>, Option<String>)>(
+        r#"SELECT u.user_id, u.name, u.codeforces_handle,
+                  p.rating, p.rank_title
+           FROM users u
+           LEFT JOIN platform_profiles p
+             ON p.user_id = u.user_id AND p.platform = 'codeforces'
+           WHERE u.status IN ('active', 'pending', 'pending_verification')
+             AND u.codeforces_handle IS NOT NULL
+             AND u.codeforces_handle != ''
+           ORDER BY u.name ASC"#,
     )
     .fetch_all(&state.pool)
     .await?;
 
-    if rows.is_empty() {
-        return Ok(Json(json!({
-            "success": true,
-            "count": 0,
-            "data": []
-        })));
-    }
+    // rated members rank by rating; everyone still unrated shares the last place
+    let (mut rated, unrated): (Vec<_>, Vec<_>) =
+        rows.into_iter().partition(|(_, _, _, rating, _)| rating.is_some());
 
-    // batch-fetch ratings from cf api using semicolon-separated handles
-    let handles: Vec<&str> = rows.iter().map(|(_, _, h)| h.as_str()).collect();
-    let handles_param = handles.join(";");
-    let url = format!(
-        "https://codeforces.com/api/user.info?handles={}",
-        handles_param
-    );
-
-    let response = crate::services::http::codeforces()
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!("failed to reach codeforces api for leaderboard: {}", e);
-            AppError::InternalError("Could not reach Codeforces API".to_string())
-        })?;
-
-    let body = response
-        .json::<crate::models::codeforces::CfApiResponse<Vec<crate::models::codeforces::CfUserInfo>>>()
-        .await
-        .map_err(|e| {
-            tracing::error!("failed to parse cf user.info for leaderboard: {}", e);
-            AppError::InternalError("Failed to parse Codeforces response".to_string())
-        })?;
-
-    let cf_users = body.result.unwrap_or_default();
-
-    // build a handle -> (rating, rank) lookup map
-    let rating_map: std::collections::HashMap<String, (Option<i32>, Option<String>)> = cf_users
-        .iter()
-        .map(|u| (u.handle.to_lowercase(), (u.rating, u.rank.clone())))
-        .collect();
-
-    // split into rated and unrated
-    let mut rated: Vec<(i32, String, String, i32, Option<String>)> = Vec::new();
-    let mut unrated: Vec<(i32, String, String)> = Vec::new();
-
-    for (user_id, name, handle) in &rows {
-        match rating_map.get(&handle.to_lowercase()) {
-            Some((Some(r), rank_opt)) => {
-                rated.push((*user_id, name.clone(), handle.clone(), *r, rank_opt.clone()))
-            }
-            _ => unrated.push((*user_id, name.clone(), handle.clone())),
-        }
-    }
-
-    // sort rated users by rating descending
     rated.sort_by(|a, b| b.3.cmp(&a.3));
 
-    // rated users get sequential ranks 1, 2, 3, ...
     let mut leaderboard: Vec<LeaderboardEntry> = rated
         .into_iter()
         .enumerate()
-        .map(
-            |(i, (user_id, name, handle, rating, rank_opt))| LeaderboardEntry {
-                rank: (i + 1) as i32,
-                user_id,
-                name,
-                codeforces_handle: handle,
-                current_rating: Some(rating),
-                current_rank: rank_opt,
-            },
-        )
+        .map(|(i, (user_id, name, handle, rating, rank_title))| LeaderboardEntry {
+            rank: (i + 1) as i32,
+            user_id,
+            name,
+            codeforces_handle: handle,
+            current_rating: rating,
+            current_rank: rank_title,
+        })
         .collect();
 
-    // all unrated users share the same last rank
     let unrated_rank = (leaderboard.len() + 1) as i32;
-    for (user_id, name, handle) in unrated {
+    for (user_id, name, handle, _, _) in unrated {
         leaderboard.push(LeaderboardEntry {
             rank: unrated_rank,
             user_id,
