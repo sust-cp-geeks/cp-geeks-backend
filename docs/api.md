@@ -657,7 +657,8 @@ Community leaderboard of all active registered users ranked by Codeforces rating
 
 ## Date Formats
 
-Anywhere a datetime is accepted (`contest_date`, `event_date`), these all parse:
+Anywhere a datetime is accepted (`contest_date` on contests, `event_date` on
+announcements — events have no date field), these all parse:
 
 | Format | Example |
 |--------|---------|
@@ -910,33 +911,40 @@ Delete an announcement.
 
 ## 6. Events
 
-### GET `/api/events`
-List all events with their teams and team members.
+Reading is **public**; writing requires admin or manager.
 
-**Access:** User (requires token)
+> Events have no `event_date`. A previous version of this document described
+> `event_name`, `event_date`, `location`, `created_by`, `team_name` and
+> `standing` — none of those exist. The shapes below were captured from a live
+> round-trip.
+
+### GET `/api/events`
+List all events with their teams and members.
+
+**Access:** Public — no token required
 
 **Success (200):**
 ```json
 {
   "success": true,
+  "count": 1,
   "data": [
     {
-      "event_id": 1,
-      "event_name": "ICPC Dhaka Regional 2025",
-      "event_date": "2025-12-15T09:00:00",
-      "location": "BUET, Dhaka",
-      "description": "Annual ICPC regional contest",
-      "created_by": 5,
-      "created_at": "2025-11-01T10:00:00",
+      "event_id": 11,
+      "title": "ICPC Dhaka Regional 2026",
+      "description": "Team formation contests for the regional.",
+      "vjudge_contest_ids": [650000, 600123],
+      "merged_handles": [
+        { "name": "boss_saim", "handles": ["alsaim", "alsaim199"] }
+      ],
       "teams": [
         {
-          "team_id": 1,
-          "team_name": "SUST_Sigma",
-          "standing": "3rd",
+          "team_id": 6,
+          "coach_name": "Dr Coach",
           "members": [
-            { "member_id": 1, "member_name": "Neel", "codeforces_handle": "Unga_Bunga" },
-            { "member_id": 2, "member_name": "Dipu", "codeforces_handle": "postmasterr" },
-            { "member_id": 3, "member_name": "Faiyaz", "codeforces_handle": "EDM_FI" }
+            { "member_id": 25, "reg_number": "2021331021", "user_id": 5, "name": "Faiyaz Ismail" },
+            { "member_id": 26, "reg_number": "2021331011", "user_id": 6, "name": "Dipu Debnath" },
+            { "member_id": 27, "reg_number": "2021331083", "user_id": 32, "name": "Niloy Chandra Deb" }
           ]
         }
       ]
@@ -945,77 +953,101 @@ List all events with their teams and team members.
 }
 ```
 
+| Field | Notes |
+|-------|-------|
+| `title` | Required on create, 1-255 characters |
+| `description` | Required, 1-10000 characters |
+| `vjudge_contest_ids` | Optional array of VJudge contest ids |
+| `merged_handles` | Optional; combines several VJudge handles under one name, same shape the ranker accepts |
+| `teams[].coach_name` | Optional |
+| `teams[].members[].user_id` / `name` | Joined from users on `reg_number`. **Both `null` when no account matches** — a member can be listed before they register |
+
 ---
 
 ### GET `/api/events/{id}`
-Get a single event with teams.
+One event with its teams.
 
-**Access:** User (requires token)
+**Access:** Public — no token required
+
+**Errors:** `404` — no such event
 
 ---
 
 ### POST `/api/events`
-Create a new event.
+Create an event.
 
-**Access:** Admin/Manager
-
-**Request:**
-```json
-{
-  "event_name": "ICPC Dhaka Regional 2025",
-  "event_date": "2025-12-15T09:00:00",
-  "location": "BUET, Dhaka",
-  "description": "Annual ICPC regional contest"
-}
-```
-
----
-
-### PUT `/api/events/{id}`
-Update an event. All fields optional.
-
-**Access:** Admin/Manager
-
----
-
-### DELETE `/api/events/{id}`
-Delete an event and all its teams.
-
-**Access:** Admin/Manager
-
----
-
-### POST `/api/events/{event_id}/teams`
-Add a team to an event (3 members required).
-
-**Access:** Admin/Manager
+**Access:** Admin or Manager
 
 **Request:**
 ```json
 {
-  "team_name": "SUST_Sigma",
-  "standing": "3rd",
-  "members": [
-    { "member_name": "Neel", "codeforces_handle": "Unga_Bunga" },
-    { "member_name": "Dipu", "codeforces_handle": "postmasterr" },
-    { "member_name": "Faiyaz", "codeforces_handle": "EDM_FI" }
+  "title": "ICPC Dhaka Regional 2026",
+  "description": "Team formation contests for the regional.",
+  "vjudge_contest_ids": [650000, 600123],
+  "merged_handles": [
+    { "name": "boss_saim", "handles": ["alsaim", "alsaim199"] }
   ]
 }
 ```
 
+`title` and `description` are required; the other two are optional.
+
+---
+
+### PUT `/api/events/{id}`
+Update an event. All fields optional — omitted fields keep their value.
+
+**Access:** Admin or Manager
+
+---
+
+### DELETE `/api/events/{id}`
+Delete an event. Its teams and their members go with it (`ON DELETE CASCADE`).
+
+**Access:** Admin or Manager
+
+---
+
+### POST `/api/events/{event_id}/teams`
+Add a team. **Exactly 3 members**, given as registration numbers.
+
+**Access:** Admin or Manager
+
+**Request:**
+```json
+{
+  "coach_name": "Dr Coach",
+  "members": ["2021331021", "2021331011", "2021331083"]
+}
+```
+
+Members are plain registration-number strings, not objects. They are matched to
+user accounts on read, so a number that belongs to nobody is still accepted and
+comes back with `user_id: null`.
+
+**Errors:** `400` — not exactly 3 members · `404` — no such event
+
 ---
 
 ### PUT `/api/events/{event_id}/teams/{team_id}`
-Update a team.
+Replace a team's coach and all 3 members.
 
-**Access:** Admin/Manager
+**Access:** Admin or Manager
+
+**Errors:** `400` — not exactly 3 members · `404` — the team does not belong to
+that event
 
 ---
 
 ### DELETE `/api/events/{event_id}/teams/{team_id}`
-Delete a team.
+Delete a team and its members.
 
-**Access:** Admin/Manager
+**Access:** Admin or Manager
+
+**Errors:** `404` — the team does not belong to that event
+
+> The `event_id` in both team URLs is enforced. Passing a different event's id
+> returns `404` rather than acting on the team.
 
 ---
 

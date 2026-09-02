@@ -111,7 +111,7 @@ for f in migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done
 | Codeforces | `profile/{id}`, `leaderboard` | User |
 | Contests | CRUD (5) | User / Admin |
 | Announcements | CRUD + `categories` (6) | User / Admin · Manager |
-| Events + Teams | CRUD (8) | User / Admin · Manager |
+| Events + Teams | CRUD (8) | Public read / Admin · Manager |
 | Problemset | `GET /` + 3 create endpoints | Public read / Admin write |
 | Admin | User management, ID card review, recovery (9) | Admin |
 | VJudge Ranker | `analyze`, `pdf/{session_id}`, `contest-title/{id}` | Public |
