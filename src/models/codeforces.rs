@@ -42,6 +42,16 @@ pub struct CfProblem {
     pub rating: Option<i32>,
 }
 
+// from contest.list — one entry per contest that exists on codeforces
+#[derive(Debug, Clone, Deserialize)]
+pub struct CfContestListItem {
+    pub id: i32,
+    pub name: String,
+    pub phase: String,
+    #[serde(rename = "startTimeSeconds")]
+    pub start_time_seconds: Option<i64>,
+}
+
 // from user.rating — one entry per rated contest
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CfRatingChange {
@@ -87,6 +97,35 @@ pub struct ContestPerformance {
     pub date: String,
 }
 
+// one contest on the timeline, whether or not they showed up
+#[derive(Debug, Serialize)]
+pub struct ContestAttendance {
+    pub contest_id: i32,
+    pub contest_name: String,
+    pub date: String,
+    pub participated: bool,
+    // false when they were not allowed to enter (a pupil cannot join Div. 1),
+    // or when the contest was unrated so participation is undetectable.
+    // the frontend should not shade an ineligible contest red.
+    pub eligible: bool,
+    // only present when participated — the frontend can show the delta inline
+    pub rank: Option<i32>,
+    pub old_rating: Option<i32>,
+    pub new_rating: Option<i32>,
+    pub rating_change: Option<i32>,
+}
+
+// how much of the timeline they turned up for
+#[derive(Debug, Serialize)]
+pub struct AttendanceSummary {
+    pub total_contests: usize,
+    pub participated: usize,
+    // eligible contests they did not enter — the only ones that are truly missed
+    pub missed: usize,
+    // contests they could never have entered, excluded from `missed`
+    pub ineligible: usize,
+}
+
 // full profile stats response
 #[derive(Debug, Serialize)]
 pub struct CfProfileStats {
@@ -97,6 +136,10 @@ pub struct CfProfileStats {
     pub max_rank: Option<String>,
     pub solve_counts: SolveCounts,
     pub recent_contests: Vec<ContestPerformance>,
+    // every contest since their first rated one, newest first, each flagged
+    // participated or missed
+    pub contest_attendance: Vec<ContestAttendance>,
+    pub attendance_summary: AttendanceSummary,
 }
 
 // leaderboard row

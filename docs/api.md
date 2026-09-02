@@ -584,6 +584,44 @@ Get a user's live Codeforces stats. Data is fetched in real-time from the Codefo
 | `recent_contests` | array | Last 15 rated contests (most recent first) |
 | `recent_contests[].rating_change` | int | `new_rating - old_rating` (can be negative) |
 | `recent_contests[].date` | string | ISO 8601 format |
+| `contest_attendance` | array | Every contest since their first rated one — see below |
+| `attendance_summary` | object | `total_contests`, `participated`, `missed`, `ineligible` |
+
+**Contest attendance.** Every Codeforces contest from the member's **first rated
+contest** onward, newest first, capped at 100, each flagged participated or not.
+
+```json
+{
+  "attendance_summary": {
+    "total_contests": 100, "participated": 14, "missed": 68, "ineligible": 18
+  },
+  "contest_attendance": [
+    { "contest_id": 2153, "contest_name": "Codeforces Round 1118 (Div. 2)",
+      "date": "2026-08-29T14:35:00", "participated": true, "eligible": true,
+      "rank": 4049, "old_rating": 1252, "new_rating": 1282, "rating_change": 30 },
+    { "contest_id": 2151, "contest_name": "Codeforces Round 1116 (Div. 1)",
+      "date": "2026-08-09T14:35:00", "participated": false, "eligible": false,
+      "rank": null, "old_rating": null, "new_rating": null, "rating_change": null }
+  ]
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `participated` | They competed and it was rated for them |
+| `eligible` | They were **allowed** to enter, judged against their rating at that time |
+| `rank`, `old_rating`, `new_rating`, `rating_change` | Only present when `participated` |
+
+`eligible` is false when the member could not enter (a 1282-rated pupil cannot
+join a Div. 1 round) or the contest was unrated — an unrated entry never appears
+in `user.rating`, so attendance is undetectable and calling it missed would be
+wrong. Only `eligible && !participated` counts toward `missed`.
+
+Division rules are read from the contest name, since Codeforces encodes them
+nowhere else. Combined `Div. 1 + Div. 2` rounds count as open, and participation
+always overrides the rule so a misparsed name can never hide a real entry.
+
+`recent_contests` is unchanged and still returns the last 15 rated performances.
 
 **Errors:**
 - `404` — User not found or has no Codeforces handle
