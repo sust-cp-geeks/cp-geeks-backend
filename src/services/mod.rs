@@ -1,7 +1,9 @@
+pub mod atcoder;
 pub mod codeforces;
 pub mod email;
 pub mod http;
 pub mod image_upload;
+pub mod platform_sync;
 pub mod ranker;
 pub mod storage;
 pub mod vjudge;

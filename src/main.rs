@@ -116,6 +116,11 @@ async fn main() {
         .await
         .expect("Failed to apply database migrations");
 
+    // background platform sync: atcoder has no bulk endpoint and asks for a
+    // second between calls, so members are refreshed on a slow loop and the api
+    // serves stored rows rather than ever calling out on the request path
+    services::platform_sync::spawn(pool.clone());
+
     let state = AppState::new(pool);
 
     let app = Router::new()
@@ -126,6 +131,7 @@ async fn main() {
         .nest("/api/announcements", routes::announcement_routes::routes())
         .nest("/api/events", routes::event_routes::routes())
         .nest("/api/cf", routes::codeforces_routes::routes())
+        .nest("/api/atcoder", routes::atcoder_routes::routes())
         .nest("/api/ranker", routes::ranker_routes::routes())
         .nest("/api/problems", routes::problem_routes::routes())
         .route(

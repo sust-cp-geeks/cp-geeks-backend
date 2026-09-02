@@ -1,5 +1,6 @@
 pub mod admin_routes;
 pub mod announcement_routes;
+pub mod atcoder_routes;
 pub mod auth_routes;
 pub mod codeforces_routes;
 pub mod contest_routes;

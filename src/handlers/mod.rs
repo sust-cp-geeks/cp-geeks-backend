@@ -1,5 +1,6 @@
 pub mod admin_handler;
 pub mod announcement_handler;
+pub mod atcoder_handler;
 pub mod auth_handler;
 pub mod codeforces_handler;
 pub mod contest_handler;
