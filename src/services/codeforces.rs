@@ -13,8 +13,11 @@ const CF_API_BASE: &str = "https://codeforces.com/api";
 
 // difficulty bucket labels (500 gap)
 const BUCKETS: &[(&str, i32, i32)] = &[
-    ("0-499", 0, 499),
-    ("500-999", 500, 999),
+    // starts at 500 because codeforces problems begin at 800 — a 0-499 row was
+    // permanently empty. the range still opens at 0 so that a lower-rated
+    // problem, if one ever appeared, is counted rather than dropped: `total` is
+    // the sum of these buckets, so anything unbucketed would vanish from it too.
+    ("500-999", 0, 999),
     ("1000-1499", 1000, 1499),
     ("1500-1999", 1500, 1999),
     ("2000-2499", 2000, 2499),
