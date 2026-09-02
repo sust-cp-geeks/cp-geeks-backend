@@ -417,3 +417,176 @@ pub async fn build_profile_stats(handle: &str) -> Result<CfProfileStats, AppErro
         attendance_summary,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rated(contest_id: i32, at: i64, old: i32, new: i32) -> CfRatingChange {
+        CfRatingChange {
+            contest_id,
+            contest_name: format!("Contest {contest_id}"),
+            handle: "tester".to_string(),
+            rank: 100,
+            old_rating: old,
+            new_rating: new,
+            rating_update_time_seconds: at,
+        }
+    }
+
+    fn listed(id: i32, name: &str, at: i64) -> CfContestListItem {
+        CfContestListItem {
+            id,
+            name: name.to_string(),
+            phase: "FINISHED".to_string(),
+            start_time_seconds: Some(at),
+        }
+    }
+
+    #[test]
+    fn combined_rounds_are_open_to_everyone() {
+        // must be checked before Div. 1, or a pupil is wrongly excluded
+        assert_eq!(
+            division_rule("Spectral::Cup 2026 Round 3 (Codeforces Round 1110, Div. 1 + Div. 2)"),
+            DivisionRule::Open
+        );
+    }
+
+    #[test]
+    fn divisions_are_read_from_the_contest_name() {
+        assert_eq!(
+            division_rule("Codeforces Round 1116 (Div. 1)"),
+            DivisionRule::Div1
+        );
+        assert_eq!(
+            division_rule("Codeforces Round 1118 (Div. 2)"),
+            DivisionRule::Div2
+        );
+        assert_eq!(
+            division_rule("Codeforces Round 1114 (Div. 3)"),
+            DivisionRule::Div3
+        );
+        assert_eq!(
+            division_rule("Codeforces Round 1090 (Div. 4)"),
+            DivisionRule::Div4
+        );
+        // educational rounds say "Rated for Div. 2"
+        assert_eq!(
+            division_rule("Educational Codeforces Round 193 (Rated for Div. 2)"),
+            DivisionRule::Div2
+        );
+        // no marker at all — global rounds, april fools, kotlin heroes
+        assert_eq!(division_rule("Hello 2026"), DivisionRule::Open);
+        assert_eq!(
+            division_rule("Kotlin Heroes: Episode 14"),
+            DivisionRule::Open
+        );
+    }
+
+    #[test]
+    fn unrated_rounds_are_not_counted_against_anyone() {
+        // participation in an unrated round never reaches user.rating, so we
+        // cannot tell whether they showed up
+        assert_eq!(
+            division_rule("2025 ICPC Asia Taichung Regional Contest (Unrated, Online Mirror)"),
+            DivisionRule::Unrated
+        );
+        assert!(!is_eligible(DivisionRule::Unrated, Some(1500)));
+    }
+
+    #[test]
+    fn eligibility_follows_the_rating_thresholds() {
+        assert!(!is_eligible(DivisionRule::Div1, Some(1899)));
+        assert!(is_eligible(DivisionRule::Div1, Some(1900)));
+        assert!(is_eligible(DivisionRule::Div2, Some(2099)));
+        assert!(!is_eligible(DivisionRule::Div2, Some(2100)));
+        assert!(is_eligible(DivisionRule::Div3, Some(1599)));
+        assert!(!is_eligible(DivisionRule::Div3, Some(1600)));
+        assert!(is_eligible(DivisionRule::Div4, Some(1399)));
+        assert!(!is_eligible(DivisionRule::Div4, Some(1400)));
+        assert!(is_eligible(DivisionRule::Open, Some(0)));
+    }
+
+    #[test]
+    fn rating_is_taken_from_the_day_of_the_contest_not_today() {
+        let history = vec![rated(1, T0, 1200, 1300), rated(2, T0 + 7 * DAY, 1300, 1950)];
+        // before anything happened — their starting rating
+        assert_eq!(rating_at(T0 - DAY, &history), Some(1200));
+        // between the two
+        assert_eq!(rating_at(T0 + DAY, &history), Some(1300));
+        // after both
+        assert_eq!(rating_at(T0 + 30 * DAY, &history), Some(1950));
+    }
+
+    // real epoch seconds: the window allows a day of slack because a rating
+    // update lands after its contest starts, so toy timestamps a few seconds
+    // apart would all fall inside it
+    const T0: i64 = 1_700_000_000;
+    const DAY: i64 = 86_400;
+
+    #[test]
+    fn window_starts_at_their_first_rated_contest() {
+        // a member who joined this year has not "missed" a 2015 round
+        let history = vec![rated(2, T0, 1200, 1250)];
+        let contests = vec![
+            listed(3, "Codeforces Round C (Div. 2)", T0 + 7 * DAY),
+            listed(2, "Codeforces Round B (Div. 2)", T0),
+            listed(1, "Codeforces Round A (Div. 2)", T0 - 30 * DAY), // before they joined
+        ];
+        let (rows, summary) = build_attendance(&contests, &history);
+        assert_eq!(rows.len(), 2, "the pre-join contest must be excluded");
+        assert!(rows.iter().all(|r| r.contest_id != 1));
+        assert_eq!(summary.total_contests, 2);
+    }
+
+    #[test]
+    fn attendance_splits_into_attended_missed_and_ineligible() {
+        let history = vec![rated(10, T0, 1200, 1282)];
+        let contests = vec![
+            listed(30, "Codeforces Round 1116 (Div. 1)", T0 + 14 * DAY), // 1282 cannot enter
+            listed(20, "Codeforces Round 1118 (Div. 2)", T0 + 7 * DAY),  // eligible, skipped
+            listed(10, "Codeforces Round 1100 (Div. 2)", T0),            // attended
+        ];
+        let (rows, summary) = build_attendance(&contests, &history);
+
+        assert_eq!(summary.participated, 1);
+        assert_eq!(summary.missed, 1);
+        assert_eq!(summary.ineligible, 1);
+        assert_eq!(summary.total_contests, 3);
+        // missed must never include contests they could not enter
+        assert_eq!(
+            summary.participated + summary.missed + summary.ineligible,
+            summary.total_contests
+        );
+
+        let attended = rows.iter().find(|r| r.contest_id == 10).unwrap();
+        assert!(attended.participated && attended.eligible);
+        assert_eq!(attended.rating_change, Some(82));
+
+        let missed = rows.iter().find(|r| r.contest_id == 20).unwrap();
+        assert!(!missed.participated && missed.eligible);
+        assert_eq!(missed.rank, None, "missed rows carry no rank");
+
+        let div1 = rows.iter().find(|r| r.contest_id == 30).unwrap();
+        assert!(!div1.participated && !div1.eligible);
+    }
+
+    #[test]
+    fn taking_part_overrides_the_name_parser() {
+        // if the parser misreads a title, a real entry must still show as
+        // attended rather than being hidden as ineligible
+        let history = vec![rated(1, T0, 1200, 1210)];
+        let contests = vec![listed(1, "Some Round (Unrated, Online Mirror)", T0)];
+        let (rows, summary) = build_attendance(&contests, &history);
+        assert!(rows[0].participated);
+        assert!(rows[0].eligible, "participation implies eligibility");
+        assert_eq!(summary.ineligible, 0);
+    }
+
+    #[test]
+    fn a_member_who_never_competed_gets_an_empty_timeline() {
+        let (rows, summary) = build_attendance(&[listed(1, "Round (Div. 2)", T0)], &[]);
+        assert!(rows.is_empty());
+        assert_eq!(summary.total_contests, 0);
+    }
+}

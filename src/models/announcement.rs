@@ -97,3 +97,43 @@ pub struct AnnouncementQuery {
     pub upcoming: Option<bool>,
     pub limit: Option<i64>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn category_matching_ignores_case_and_returns_canonical_spelling() {
+        for input in ["contest", "CONTEST", "Contest", "cOnTeSt"] {
+            assert_eq!(
+                normalize_category(Some(input)).unwrap(),
+                Some("Contest".to_string()),
+                "for {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_listed_category_is_accepted() {
+        for c in CATEGORIES {
+            assert_eq!(normalize_category(Some(c)).unwrap(), Some(c.to_string()));
+        }
+    }
+
+    #[test]
+    fn unknown_category_is_rejected_with_the_valid_list() {
+        // "event" was in the old api docs as an example, so it will be sent
+        let err = normalize_category(Some("event")).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("event"), "should name the bad value: {msg}");
+        assert!(msg.contains("Contest"), "should list valid values: {msg}");
+    }
+
+    #[test]
+    fn absent_and_empty_both_mean_no_category() {
+        // this is the point: "" must not become a distinct stored value
+        assert_eq!(normalize_category(None).unwrap(), None);
+        assert_eq!(normalize_category(Some("")).unwrap(), None);
+        assert_eq!(normalize_category(Some("   ")).unwrap(), None);
+    }
+}

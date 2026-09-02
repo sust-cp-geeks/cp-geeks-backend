@@ -119,3 +119,63 @@ pub fn login_key(email: &str) -> String {
 pub fn analyze_key(ip: &str) -> String {
     format!("analyze:{}", ip)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const WINDOW: Duration = Duration::from_secs(60);
+
+    #[test]
+    fn allows_up_to_the_limit_then_refuses() {
+        let limiter = RateLimiter::new();
+        for i in 1..=3 {
+            assert!(limiter.check("a@b.com", 3, WINDOW).is_ok(), "attempt {i}");
+        }
+        assert!(matches!(
+            limiter.check("a@b.com", 3, WINDOW),
+            Err(AppError::TooManyRequests(_))
+        ));
+    }
+
+    #[test]
+    fn the_refusal_says_how_long_to_wait() {
+        let limiter = RateLimiter::new();
+        limiter.check("a@b.com", 1, WINDOW).unwrap();
+        let err = limiter.check("a@b.com", 1, WINDOW).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("second"), "should name a wait: {msg}");
+    }
+
+    #[test]
+    fn keys_are_counted_separately() {
+        // one member being locked out must not lock out anyone else
+        let limiter = RateLimiter::new();
+        limiter.check("a@b.com", 1, WINDOW).unwrap();
+        assert!(limiter.check("a@b.com", 1, WINDOW).is_err());
+        assert!(limiter.check("other@b.com", 1, WINDOW).is_ok());
+    }
+
+    #[test]
+    fn reset_clears_a_key() {
+        // a successful login clears the failed-login counter
+        let limiter = RateLimiter::new();
+        limiter.check("a@b.com", 1, WINDOW).unwrap();
+        assert!(limiter.check("a@b.com", 1, WINDOW).is_err());
+        limiter.reset("a@b.com");
+        assert!(limiter.check("a@b.com", 1, WINDOW).is_ok());
+    }
+
+    #[test]
+    fn hits_outside_the_window_stop_counting() {
+        let limiter = RateLimiter::new();
+        let tiny = Duration::from_millis(50);
+        limiter.check("a@b.com", 1, tiny).unwrap();
+        assert!(limiter.check("a@b.com", 1, tiny).is_err());
+        std::thread::sleep(Duration::from_millis(80));
+        assert!(
+            limiter.check("a@b.com", 1, tiny).is_ok(),
+            "the old hit should have aged out"
+        );
+    }
+}
