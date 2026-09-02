@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use crate::app_state::AppState;
 use crate::errors::AppError;
 use crate::models::user::{UpdateProfile, User};
-use crate::services::codeforces;
+use crate::services::{atcoder, codeforces};
 use crate::utils::jwt::Claims;
 use crate::validation::validate_string;
 
@@ -72,18 +72,36 @@ pub async fn update_me(
         None => existing.codeforces_handle,
     };
 
+    let previous_atcoder = existing.atcoder_handle.clone();
+    let new_atcoder = match body.atcoder_handle {
+        Some(handle) if handle.trim().is_empty() => None,
+        Some(handle) => {
+            validate_string(&handle, "AtCoder handle", 1, 100)?;
+            atcoder::validate_handle(handle.trim()).await?;
+            Some(handle.trim().to_string())
+        }
+        None => existing.atcoder_handle,
+    };
+
     let user = sqlx::query_as::<_, User>(
         r#"UPDATE users
-           SET name = $1, vjudge_handle = $2, codeforces_handle = $3
-           WHERE user_id = $4
+           SET name = $1, vjudge_handle = $2, codeforces_handle = $3, atcoder_handle = $4
+           WHERE user_id = $5
            RETURNING *"#,
     )
     .bind(&new_name)
     .bind(&new_vjudge)
     .bind(&new_codeforces)
+    .bind(&new_atcoder)
     .bind(claims.user_id)
     .fetch_one(&state.pool)
     .await?;
+
+    // a changed handle means the stored atcoder data is now for someone else,
+    // so refresh it rather than leaving it stale until the next scheduled pass
+    if new_atcoder != previous_atcoder {
+        crate::services::platform_sync::sync_user_soon(state.pool.clone(), claims.user_id);
+    }
 
     Ok(Json(json!({
         "success": true,

@@ -11,6 +11,7 @@ pub struct User {
     pub password: String,
     pub vjudge_handle: Option<String>,
     pub codeforces_handle: Option<String>,
+    pub atcoder_handle: Option<String>,
     pub is_admin: Option<bool>,
     pub is_manager: Option<bool>,
     pub status: Option<String>,
@@ -29,6 +30,7 @@ pub struct RegisterInput {
     pub password: String,
     pub codeforces_handle: Option<String>,
     pub vjudge_handle: Option<String>,
+    pub atcoder_handle: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,4 +44,5 @@ pub struct UpdateProfile {
     pub name: Option<String>,
     pub vjudge_handle: Option<String>,
     pub codeforces_handle: Option<String>,
+    pub atcoder_handle: Option<String>,
 }

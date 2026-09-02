@@ -12,7 +12,7 @@ use crate::app_state::AppState;
 use crate::errors::AppError;
 use crate::handlers::admin_handler::discard_id_card;
 use crate::models::user::{LoginInput, RegisterInput, User};
-use crate::services::{codeforces, email, image_upload, storage};
+use crate::services::{atcoder, codeforces, email, image_upload, storage};
 use crate::utils::jwt::create_token;
 use crate::utils::otp;
 use crate::utils::rate_limit;
@@ -110,6 +110,7 @@ async fn parse_register_request(
         password: required("password")?,
         codeforces_handle: optional("codeforces_handle"),
         vjudge_handle: optional("vjudge_handle"),
+        atcoder_handle: optional("atcoder_handle"),
     };
 
     let images = match (front, back) {
@@ -215,6 +216,18 @@ pub async fn register(
         validate_string(handle, "VJudge handle", 1, 100)?;
     }
 
+    let atcoder_handle = body
+        .atcoder_handle
+        .as_deref()
+        .map(|h| h.trim())
+        .filter(|h| !h.is_empty());
+    if let Some(handle) = atcoder_handle {
+        validate_string(handle, "AtCoder handle", 1, 100)?;
+        // checked against atcoder the same way the codeforces handle is, so a
+        // typo is caught here rather than silently never syncing
+        atcoder::validate_handle(handle).await?;
+    }
+
     // anyone without a university address has to prove who they are, since an
     // admin will be approving them by hand
     let id_card = match id_card {
@@ -306,7 +319,7 @@ pub async fn register(
     };
 
     let inserted = sqlx::query_scalar::<_, i32>(
-        "INSERT INTO users (reg_number, name, email, password, status, codeforces_handle, vjudge_handle, id_card_front_path, id_card_back_path) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING user_id",
+        "INSERT INTO users (reg_number, name, email, password, status, codeforces_handle, vjudge_handle, atcoder_handle, id_card_front_path, id_card_back_path) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING user_id",
     )
     .bind(&body.reg_number)
     .bind(&body.name)
@@ -315,6 +328,7 @@ pub async fn register(
     .bind("pending_verification")
     .bind(cf_handle)
     .bind(vjudge_handle)
+    .bind(atcoder_handle)
     .bind(front_path)
     .bind(back_path)
     .fetch_one(&state.pool)
@@ -336,6 +350,11 @@ pub async fn register(
             return Err(e.into());
         }
     };
+
+    // a new member with a handle should not wait for the next scheduled pass
+    if atcoder_handle.is_some() {
+        crate::services::platform_sync::sync_user_soon(state.pool.clone(), user_id);
+    }
 
     Ok((
         StatusCode::CREATED,
