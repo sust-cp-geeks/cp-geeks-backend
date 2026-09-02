@@ -70,7 +70,7 @@ flowchart TD
 | Auth | JWT · Argon2id · rate-limited OTP |
 | File storage | Supabase Storage (private bucket, signed URLs) |
 | Email | Resend (OTP + password reset) |
-| External APIs | Codeforces · VJudge |
+| External APIs | Codeforces · VJudge · AtCoder |
 
 ## Getting Started
 
@@ -109,6 +109,7 @@ for f in migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done
 | Auth | `register`, `verify-otp`, `resend-otp`, `login`, `forgot-password`, `reset-password`, `status`, `change-email` ×2 | Public |
 | Profile | `me` (get/update), `{id}`, `search` | User · `{id}` and `search` are public |
 | Codeforces | `profile/{id}`, `leaderboard` | User |
+| AtCoder | `profile/{id}`, `leaderboard` (background-synced) | User |
 | Contests | CRUD (5) | User / Admin |
 | Announcements | CRUD + `categories` (6) | User / Admin · Manager |
 | Events + Teams | CRUD (8) | Public read / Admin · Manager |

@@ -111,6 +111,7 @@ Create a new account. Sends a 6-digit OTP to the provided email.
 | `password` | string | Yes | 6-255 characters |
 | `codeforces_handle` | string | No | 1-50 chars, validated against the Codeforces API |
 | `vjudge_handle` | string | No | 1-100 chars, not verified (VJudge has no public lookup) |
+| `atcoder_handle` | string | No | 1-100 chars, verified against AtCoder |
 
 Both handles are trimmed; an empty string counts as "not provided".
 `vjudge_handle` is how the ranker maps VJudge standings to real names, so a
@@ -441,6 +442,7 @@ Update profile. All fields are optional — only send what you want to change.
 | `name` | string | No | 2-100 characters, trimmed |
 | `vjudge_handle` | string | No | 1-100 characters, trimmed |
 | `codeforces_handle` | string | No | 1-50 characters, validated against the CF API |
+| `atcoder_handle` | string | No | 1-100 characters, validated against AtCoder |
 
 Lengths count **characters, not bytes**, so a Bengali name is not cut short.
 Sending `""` for either handle clears it to `null`; omitting a field leaves it
@@ -514,7 +516,6 @@ Get a user's live Codeforces stats. Data is fetched in real-time from the Codefo
       "last_1_month": {
         "total": 12,
         "buckets": {
-          "0-499": 0,
           "500-999": 0,
           "1000-1499": 2,
           "1500-1999": 3,
@@ -526,7 +527,6 @@ Get a user's live Codeforces stats. Data is fetched in real-time from the Codefo
       "last_6_months": {
         "total": 78,
         "buckets": {
-          "0-499": 0,
           "500-999": 9,
           "1000-1499": 10,
           "1500-1999": 17,
@@ -538,7 +538,6 @@ Get a user's live Codeforces stats. Data is fetched in real-time from the Codefo
       "last_1_year": {
         "total": 188,
         "buckets": {
-          "0-499": 0,
           "500-999": 23,
           "1000-1499": 33,
           "1500-1999": 36,
@@ -1172,6 +1171,73 @@ delete themselves.
 **Access:** Admin only
 
 **Errors:** `400` — deleting yourself · `409` — the user has written announcements
+
+---
+
+## 7b. AtCoder
+
+Served entirely from our own tables. A background job refreshes every member
+every 6 hours, one polite request pair each — AtCoder has no bulk endpoint and
+asks for a second between calls, so nothing here touches AtCoder on the request
+path. Responses are instant but may be up to 6 hours old (`synced_at` says).
+
+### GET `/api/atcoder/profile/{user_id}`
+**Access:** User (requires token)
+
+```json
+{
+  "success": true,
+  "data": {
+    "atcoder_handle": "tourist",
+    "current_rating": 3797, "current_rank": "Red",
+    "max_rating": 4229, "max_rank": "Red", "solved_count": 1057,
+    "solve_counts": {
+      "last_1_year": { "total": 16, "buckets": { "0-399": 0, "400-799": 0,
+        "800-1199": 0, "1200-1599": 0, "1600-1999": 2, "2000-2399": 2, "2400+": 12 } },
+      "last_6_months": { "...": "..." }, "last_1_month": { "...": "..." }
+    },
+    "synced_at": "2026-09-02T08:33:41", "sync_error": null,
+    "recent_contests": [ { "contest_name": "AtCoder Grand Contest 077",
+      "old_rating": 3782, "new_rating": 3797, "place": 2,
+      "performance": 3928, "is_rated": true, "ended_at": "..." } ],
+    "attendance_summary": {
+      "total_contests": 100, "participated": 5, "missed": 18, "ineligible": 77
+    },
+    "contest_attendance": [ { "contest_id": "abc473",
+      "contest_name": "AtCoder Beginner Contest 473", "date": "2026-08-29T...",
+      "participated": false, "eligible": false, "place": null,
+      "performance": null, "rating_change": null, "is_rated": true } ]
+  }
+}
+```
+
+`eligible` comes from AtCoder's own published band (`~ 1999`, `1200 ~ 2799`,
+`All`) rather than guesswork — a 3797-rated member genuinely cannot enter an ABC
+rated, so it shows as ineligible, not missed. Same three-state shading rule as
+Codeforces: green participated, red missed, **neutral for ineligible**.
+
+Practice rounds (AtCoder Daily Training, Weekday Beta) are excluded — they carry
+`rate_change: "-"` and make up 5,581 of the 6,389 entries upstream.
+
+`solve_counts` matches the Codeforces shape exactly, so the same chart
+component works — but the bands are **AtCoder's own 400-wide colour bands**, not
+Codeforces' 500-wide ranges. As on Codeforces, `total` is the sum of the buckets,
+so only problems with a difficulty estimate are counted; `solved_count` is the
+separate lifetime figure across all problems.
+
+`sync_error` is non-null when the last sync could not read that handle, so a
+typo is visible rather than looking like inactivity.
+
+**Errors:** `404` — no AtCoder profile yet (no handle set, or the first sync
+hasn't run)
+
+---
+
+### GET `/api/atcoder/leaderboard`
+**Access:** User (requires token)
+
+Members with an AtCoder handle, ranked by stored rating. Members whose last sync
+failed are omitted. Unrated members appear with `"rank": null`.
 
 ---
 
