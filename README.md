@@ -107,7 +107,7 @@ for f in migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done
 | Group | Endpoints | Access |
 |-------|-----------|--------|
 | Auth | `register`, `verify-otp`, `resend-otp`, `login`, `forgot-password`, `reset-password`, `status`, `change-email` ×2 | Public |
-| Profile | `me` (get/update), `{id}`, `search` | User · `{id}` and `search` are public |
+| Profile | `me` (get/update), `{id}`, `search` | User |
 | Codeforces | `profile/{id}`, `leaderboard` | User |
 | AtCoder | `profile/{id}`, `leaderboard` (background-synced) | User |
 | Contests | CRUD (5) | User / Admin |

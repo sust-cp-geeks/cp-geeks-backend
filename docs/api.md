@@ -473,7 +473,11 @@ unchanged. An oversized value is a `400`, not a `500`.
 ### GET `/api/users/{id}`
 Look up a single user by id.
 
-**Access:** Public — no token required
+**Access:** User (requires token)
+
+Returns only the public projection: `user_id`, `reg_number`, `name`, `email`,
+the three handles, `is_admin`, `is_manager`, `status`. The id card storage
+paths, a pending email mid-change and session bookkeeping are never returned.
 
 **Errors:** `404` — no such user
 
@@ -482,14 +486,10 @@ Look up a single user by id.
 ### GET `/api/users/search`
 Search users by name. `GET /api/users/search?name=ne`
 
-**Access:** Public — no token required
+**Access:** User (requires token)
 
-Returns at most 10 matches. Omitting `name` returns the first 10 users.
-
-> **Note:** both of these are public and return each user's `email` and
-> `reg_number`. That is a known open issue — locking them down changes a
-> response the frontend consumes, so it is being handled together with the
-> frontend work rather than piecemeal.
+Returns at most 10 matches, in the same projection as `/api/users/{id}`.
+Omitting `name` returns the first 10 users.
 
 ---
 

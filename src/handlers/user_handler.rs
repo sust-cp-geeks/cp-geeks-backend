@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 
 use crate::app_state::AppState;
 use crate::errors::AppError;
-use crate::models::user::{UpdateProfile, User};
+use crate::models::user::{PublicUser, UpdateProfile, User, PUBLIC_USER_COLUMNS};
 use crate::services::{atcoder, codeforces};
 use crate::utils::jwt::Claims;
 use crate::validation::validate_string;
@@ -115,11 +115,14 @@ use std::collections::HashMap;
 
 // public get user profile by id
 pub async fn get_user(
+    _claims: Claims,
     Path(id): Path<i32>,
     State(state): State<AppState>,
 ) -> Result<Json<Value>, AppError> {
-    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE user_id = $1")
-        .bind(id)
+    let user = sqlx::query_as::<_, PublicUser>(&format!(
+        "SELECT {PUBLIC_USER_COLUMNS} FROM users WHERE user_id = $1"
+    ))
+    .bind(id)
         .fetch_optional(&state.pool)
         .await?;
 
@@ -133,6 +136,7 @@ pub async fn get_user(
 
 // search users by name
 pub async fn search_users(
+    _claims: Claims,
     Query(params): Query<HashMap<String, String>>,
     State(state): State<AppState>,
 ) -> Result<Json<Value>, AppError> {
@@ -141,8 +145,10 @@ pub async fn search_users(
         .map(|s| format!("%{}%", s))
         .unwrap_or_else(|| "%".to_string());
 
-    let users = sqlx::query_as::<_, User>("SELECT * FROM users WHERE name ILIKE $1 LIMIT 10")
-        .bind(name_query)
+    let users = sqlx::query_as::<_, PublicUser>(&format!(
+        "SELECT {PUBLIC_USER_COLUMNS} FROM users WHERE name ILIKE $1 LIMIT 10"
+    ))
+    .bind(name_query)
         .fetch_all(&state.pool)
         .await?;
 
