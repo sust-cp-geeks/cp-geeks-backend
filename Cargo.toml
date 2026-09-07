@@ -35,14 +35,23 @@ http = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# Email (Resend API)
-resend-rs = "0.25"
+# Email (Resend API). rustls rather than the default native-tls: native-tls
+# links openssl, which makes the binary depend on whichever libssl the build
+# machine had — it then fails to start on a host with a different one.
+resend-rs = { version = "0.25", default-features = false, features = ["rustls-tls"] }
 
 # Random number generation (OTP codes)
 rand = "0.8"
 
-# HTTP client (Codeforces API)
-reqwest = { version = "0.12", features = ["json"] }
+# HTTP client (Codeforces API). same reasoning as resend-rs — the default
+# feature set selects native-tls, so it is disabled and rustls named instead.
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+    "charset",
+    "http2",
+    "system-proxy",
+] }
 
 # PDF generation (ranker results)
 genpdf = "0.2"
@@ -56,3 +65,21 @@ futures = "0.3"
 
 # ID card images: decode to validate, resize, re-encode (which drops EXIF)
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+
+
+[profile.release]
+# most of the unstripped binary is debug symbols we never read in production —
+# backtraces come from the logs, not from the deployed artefact
+strip = true
+
+# thin lto gets nearly all the cross-crate inlining of full lto for a fraction
+# of the link time
+lto = "thin"
+
+# one codegen unit lets the optimiser see the whole crate. slower to build,
+# which is a cost paid by CI rather than by anyone waiting.
+codegen-units = 1
+
+# deliberately NOT panic = "abort". it would shrink the binary further, but a
+# panic in one request handler would take the whole server down instead of
+# failing that single request.
