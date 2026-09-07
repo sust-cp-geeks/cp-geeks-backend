@@ -123,8 +123,8 @@ pub async fn get_user(
         "SELECT {PUBLIC_USER_COLUMNS} FROM users WHERE user_id = $1"
     ))
     .bind(id)
-        .fetch_optional(&state.pool)
-        .await?;
+    .fetch_optional(&state.pool)
+    .await?;
 
     let user = user.ok_or(AppError::NotFound("User not found".to_string()))?;
 
@@ -149,8 +149,8 @@ pub async fn search_users(
         "SELECT {PUBLIC_USER_COLUMNS} FROM users WHERE name ILIKE $1 LIMIT 10"
     ))
     .bind(name_query)
-        .fetch_all(&state.pool)
-        .await?;
+    .fetch_all(&state.pool)
+    .await?;
 
     Ok(Json(json!({
         "success": true,

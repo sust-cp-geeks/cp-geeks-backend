@@ -62,22 +62,25 @@ pub async fn get_leaderboard(
     .await?;
 
     // rated members rank by rating; everyone still unrated shares the last place
-    let (mut rated, unrated): (Vec<_>, Vec<_>) =
-        rows.into_iter().partition(|(_, _, _, rating, _)| rating.is_some());
+    let (mut rated, unrated): (Vec<_>, Vec<_>) = rows
+        .into_iter()
+        .partition(|(_, _, _, rating, _)| rating.is_some());
 
     rated.sort_by(|a, b| b.3.cmp(&a.3));
 
     let mut leaderboard: Vec<LeaderboardEntry> = rated
         .into_iter()
         .enumerate()
-        .map(|(i, (user_id, name, handle, rating, rank_title))| LeaderboardEntry {
-            rank: (i + 1) as i32,
-            user_id,
-            name,
-            codeforces_handle: handle,
-            current_rating: rating,
-            current_rank: rank_title,
-        })
+        .map(
+            |(i, (user_id, name, handle, rating, rank_title))| LeaderboardEntry {
+                rank: (i + 1) as i32,
+                user_id,
+                name,
+                codeforces_handle: handle,
+                current_rating: rating,
+                current_rank: rank_title,
+            },
+        )
         .collect();
 
     let unrated_rank = (leaderboard.len() + 1) as i32;

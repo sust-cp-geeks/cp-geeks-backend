@@ -1,0 +1,42 @@
+name: CI
+
+# Runs on both branches: dev is where work lands, main is what gets deployed,
+# and a merge to main should never be the first time the tests run.
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: build, test, lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # without this every run recompiles the whole dependency tree
+      - uses: Swatinem/rust-cache@v2
+
+      # --locked so CI builds the exact dependency versions in Cargo.lock
+      # rather than silently resolving newer ones
+      - name: Build
+        run: cargo build --locked --all-targets
+
+      - name: Test
+        run: cargo test --locked
+
+      # reported, not enforced. the tree carries 25 known warnings, so failing
+      # on them would block every push from day one. tighten to `-- -D warnings`
+      # once that baseline is cleared.
+      - name: Clippy
+        run: cargo clippy --all-targets
+        continue-on-error: true

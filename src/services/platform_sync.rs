@@ -354,10 +354,8 @@ pub async fn sync_codeforces(pool: &PgPool) -> (usize, usize) {
         }
     };
 
-    let by_handle: HashMap<String, &crate::models::codeforces::CfUserInfo> = users
-        .iter()
-        .map(|u| (u.handle.to_lowercase(), u))
-        .collect();
+    let by_handle: HashMap<String, &crate::models::codeforces::CfUserInfo> =
+        users.iter().map(|u| (u.handle.to_lowercase(), u)).collect();
 
     let (mut ok, mut failed) = (0, 0);
     for target in &targets {
@@ -389,7 +387,11 @@ pub async fn sync_codeforces(pool: &PgPool) -> (usize, usize) {
         match written {
             Ok(_) => ok += 1,
             Err(e) => {
-                tracing::warn!("could not store codeforces row for {}: {}", target.handle, e);
+                tracing::warn!(
+                    "could not store codeforces row for {}: {}",
+                    target.handle,
+                    e
+                );
                 failed += 1;
             }
         }
