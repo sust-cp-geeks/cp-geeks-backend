@@ -20,9 +20,19 @@ echo "    binary needs ${need}, instance has glibc ${have}"
 echo "==> uploading"
 scp -i "$KEY" target/release/backend "$HOST:/tmp/backend.new"
 
+# the pdf generator resolves "./fonts" against the service's WorkingDirectory,
+# so the ttf files have to sit beside the binary. shipping only the binary
+# leaves every pdf download failing with "failed to open font file" while the
+# rest of the api looks perfectly healthy.
+echo "==> uploading fonts"
+scp -i "$KEY" -r fonts "$HOST:/tmp/fonts.new"
+
 echo "==> installing and restarting"
 ssh -i "$KEY" "$HOST" '
   sudo install -o cpgeeks -g cpgeeks -m 0755 /tmp/backend.new /opt/cpgeeks/backend &&
+  sudo rm -rf /opt/cpgeeks/fonts &&
+  sudo mv /tmp/fonts.new /opt/cpgeeks/fonts &&
+  sudo chown -R cpgeeks:cpgeeks /opt/cpgeeks/fonts &&
   rm -f /tmp/backend.new &&
   sudo systemctl restart cpgeeks-backend &&
   sleep 3 &&
