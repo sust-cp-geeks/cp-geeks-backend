@@ -41,9 +41,9 @@ jobs:
       - name: Test
         run: cargo test --locked
 
-      # reported, not enforced. the tree carries 25 known warnings, so failing
-      # on them would block every push from day one. tighten to `-- -D warnings`
-      # once that baseline is cleared.
+      # enforced. the baseline is zero, so any warning here is something this
+      # change introduced — which is the only state in which a lint gate is
+      # worth having. it was advisory while 25 known warnings drowned out
+      # anything new.
       - name: Clippy
-        run: cargo clippy --all-targets
-        continue-on-error: true
+        run: cargo clippy --all-targets -- -D warnings

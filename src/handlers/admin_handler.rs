@@ -387,6 +387,33 @@ pub async fn admin_reject_user(
 }
 
 // ban an already active user
+// The two rules that stop a club locking itself out of its own platform. Kept
+// separate from the handler so they can be tested without a database — they are
+// the most consequential logic here and were previously only reachable through
+// a live request.
+fn check_role_change(
+    caller_id: i32,
+    target_id: i32,
+    target_is_admin: bool,
+    new_is_admin: bool,
+    other_admins: i64,
+) -> Result<(), String> {
+    // an admin editing their own role is how the last admin seat gets vacated
+    // by accident. it also makes every promotion someone else's decision.
+    if caller_id == target_id {
+        return Err("You cannot change your own role. Ask another admin.".to_string());
+    }
+
+    // demoting the only remaining admin leaves nobody able to approve members,
+    // read id cards, or appoint a replacement — recoverable only with database
+    // access, which is exactly what this endpoint exists to avoid needing.
+    if target_is_admin && !new_is_admin && other_admins == 0 {
+        return Err("This is the only admin. Promote someone else first.".to_string());
+    }
+
+    Ok(())
+}
+
 // Roles live in the jwt, not in the database read per request, so changing a
 // column alone does nothing until the token expires. Every path here bumps
 // sessions_valid_from, which the auth middleware compares against the token's
@@ -405,15 +432,6 @@ pub async fn admin_update_role(
         ));
     }
 
-    // an admin editing their own role is how a club loses its last admin by
-    // accident. changing someone else's is always someone else's decision too,
-    // which is a healthier default than self-service.
-    if claims.user_id == id {
-        return Err(AppError::BadRequest(
-            "You cannot change your own role. Ask another admin.".to_string(),
-        ));
-    }
-
     let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE user_id = $1")
         .bind(id)
         .fetch_optional(&state.pool)
@@ -423,23 +441,26 @@ pub async fn admin_update_role(
     let new_admin = body.is_admin.unwrap_or(user.is_admin.unwrap_or(false));
     let new_manager = body.is_manager.unwrap_or(user.is_manager.unwrap_or(false));
 
-    // demoting the only remaining admin leaves nobody able to approve members,
-    // review id cards, or promote a replacement — recoverable only with
-    // database access, which is exactly what this endpoint exists to avoid.
-    if user.is_admin.unwrap_or(false) && !new_admin {
-        let other_admins = sqlx::query_scalar::<_, i64>(
+    // only counted when it could matter — a promotion cannot orphan the role
+    let other_admins = if user.is_admin.unwrap_or(false) && !new_admin {
+        sqlx::query_scalar::<_, i64>(
             "SELECT count(*) FROM users WHERE is_admin = true AND user_id <> $1",
         )
         .bind(id)
         .fetch_one(&state.pool)
-        .await?;
+        .await?
+    } else {
+        i64::MAX
+    };
 
-        if other_admins == 0 {
-            return Err(AppError::BadRequest(
-                "This is the only admin. Promote someone else first.".to_string(),
-            ));
-        }
-    }
+    check_role_change(
+        claims.user_id,
+        id,
+        user.is_admin.unwrap_or(false),
+        new_admin,
+        other_admins,
+    )
+    .map_err(AppError::BadRequest)?;
 
     let updated = sqlx::query_as::<_, User>(
         "UPDATE users SET is_admin = $1, is_manager = $2, sessions_valid_from = NOW()
@@ -507,4 +528,57 @@ pub async fn admin_ban_user(
         "message": message,
         "data": updated
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_role_change;
+
+    // ids used throughout: 1 is whoever is making the change, 2 is the target
+    const CALLER: i32 = 1;
+    const OTHER: i32 = 2;
+
+    #[test]
+    fn nobody_can_change_their_own_role() {
+        let err = check_role_change(CALLER, CALLER, true, false, 5).unwrap_err();
+        assert!(err.contains("your own role"));
+    }
+
+    // even a harmless-looking self-promotion is refused, so the rule is one
+    // sentence rather than "unless it is safe"
+    #[test]
+    fn the_self_rule_does_not_care_which_direction() {
+        assert!(check_role_change(CALLER, CALLER, false, true, 5).is_err());
+    }
+
+    #[test]
+    fn the_last_admin_cannot_be_demoted() {
+        let err = check_role_change(CALLER, OTHER, true, false, 0).unwrap_err();
+        assert!(err.contains("only admin"));
+    }
+
+    #[test]
+    fn demoting_an_admin_is_fine_while_another_remains() {
+        assert!(check_role_change(CALLER, OTHER, true, false, 1).is_ok());
+    }
+
+    // the guard is about losing the role entirely, not about touching an admin
+    #[test]
+    fn a_lone_admin_can_still_be_edited_without_being_demoted() {
+        assert!(check_role_change(CALLER, OTHER, true, true, 0).is_ok());
+    }
+
+    #[test]
+    fn promoting_a_member_is_never_blocked_by_the_admin_count() {
+        assert!(check_role_change(CALLER, OTHER, false, true, 0).is_ok());
+        assert!(check_role_change(CALLER, OTHER, false, false, 0).is_ok());
+    }
+
+    // the self rule is checked first: someone demoting themselves as the last
+    // admin should be told the reason that will still be true tomorrow
+    #[test]
+    fn self_change_is_reported_before_the_last_admin_rule() {
+        let err = check_role_change(CALLER, CALLER, true, false, 0).unwrap_err();
+        assert!(err.contains("your own role"));
+    }
 }

@@ -205,6 +205,33 @@ fn process_contest(
 }
 
 // main ranking function: fetches all contests, merges, ranks
+
+// One person's totals across every contest in the run. This was an eight-field
+// tuple, which meant the sort read `b.3.cmp(&a.3)` with a comment beside it
+// explaining that 3 meant solved — a wrong index there would have been silent
+// and would have reordered the standings.
+// Decides the standings. Solved first, then penalty, then upsolved, and handle
+// last so that two genuinely tied rows do not swap places between runs — a
+// leaderboard that reorders itself on refresh looks broken even when it is not.
+fn standings_order(a: &Tally, b: &Tally) -> std::cmp::Ordering {
+    b.solved
+        .cmp(&a.solved)
+        .then(a.penalty.cmp(&b.penalty))
+        .then(b.upsolved.cmp(&a.upsolved))
+        .then_with(|| a.handle.to_lowercase().cmp(&b.handle.to_lowercase()))
+}
+
+struct Tally {
+    handle: String,
+    real_name: String,
+    score: f64,
+    solved: usize,
+    upsolved: usize,
+    penalty: i64,
+    contests_participated: usize,
+    details: Vec<ContestResult>,
+}
+
 pub async fn analyze(
     pool: &sqlx::PgPool,
     request: &RankerRequest,
@@ -276,17 +303,7 @@ pub async fn analyze(
         }
     }
 
-    // tuple: (handle, real_name, score, solved, upsolved, penalty, contests_participated, details)
-    let mut participants: Vec<(
-        String,
-        String,
-        f64,
-        usize,
-        usize,
-        i64,
-        usize,
-        Vec<ContestResult>,
-    )> = Vec::new();
+    let mut participants: Vec<Tally> = Vec::new();
 
     for (lowercase_handle, original_handle) in &unique_handles {
         let mut total_score = 0.0;
@@ -334,16 +351,16 @@ pub async fn analyze(
             .cloned()
             .unwrap_or_else(|| "unregistered".to_string());
 
-        participants.push((
-            original_handle.clone(),
+        participants.push(Tally {
+            handle: original_handle.clone(),
             real_name,
-            total_score,
-            total_solved,
-            total_upsolved,
-            total_penalty,
+            score: total_score,
+            solved: total_solved,
+            upsolved: total_upsolved,
+            penalty: total_penalty,
             contests_participated,
             details,
-        ));
+        });
     }
 
     // Now process the merged handles
@@ -406,27 +423,22 @@ pub async fn analyze(
             // for merged handles, display comma-separated vjudge handles
             let merged_handle_display = merge.handles.join(",");
 
-            participants.push((
-                merged_handle_display,
-                merge.name.clone(),
-                total_score,
-                total_solved,
-                total_upsolved,
-                total_penalty,
+            participants.push(Tally {
+                handle: merged_handle_display,
+                real_name: merge.name.clone(),
+                score: total_score,
+                solved: total_solved,
+                upsolved: total_upsolved,
+                penalty: total_penalty,
                 contests_participated,
                 details,
-            ));
+            });
         }
     }
 
     // sort: total solved desc, then penalty asc, then upsolved desc
     // handle asc at the end so tied rows don't shuffle around between runs
-    participants.sort_by(|a, b| {
-        b.3.cmp(&a.3) // solved desc
-            .then(a.5.cmp(&b.5)) // penalty asc
-            .then(b.4.cmp(&a.4)) // upsolved desc
-            .then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase())) // handle asc
-    });
+    participants.sort_by(standings_order);
 
     // assign ranks (equal solved + penalty + upsolved = same rank)
     let mut rankings: Vec<RankedParticipant> = Vec::new();
@@ -434,7 +446,16 @@ pub async fn analyze(
 
     for (
         i,
-        (handle, real_name, score, solved, upsolved, penalty, contests_participated, details),
+        Tally {
+            handle,
+            real_name,
+            score,
+            solved,
+            upsolved,
+            penalty,
+            contests_participated,
+            details,
+        },
     ) in participants.into_iter().enumerate()
     {
         if i > 0 {
@@ -467,4 +488,75 @@ pub async fn analyze(
         total_participants: rankings.len(),
         rankings,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{standings_order, Tally};
+    use std::cmp::Ordering;
+
+    fn tally(handle: &str, solved: usize, penalty: i64, upsolved: usize) -> Tally {
+        Tally {
+            handle: handle.to_string(),
+            real_name: handle.to_string(),
+            score: 0.0,
+            solved,
+            upsolved,
+            penalty,
+            contests_participated: 1,
+            details: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn more_solved_wins_regardless_of_penalty() {
+        let more = tally("a", 5, 9999, 0);
+        let fewer = tally("b", 4, 0, 0);
+        assert_eq!(standings_order(&more, &fewer), Ordering::Less);
+    }
+
+    #[test]
+    fn equal_solved_is_broken_by_lower_penalty() {
+        let quick = tally("a", 5, 100, 0);
+        let slow = tally("b", 5, 200, 0);
+        assert_eq!(standings_order(&quick, &slow), Ordering::Less);
+    }
+
+    #[test]
+    fn upsolving_breaks_a_tie_on_solved_and_penalty() {
+        let upsolver = tally("a", 5, 100, 3);
+        let neither = tally("b", 5, 100, 0);
+        assert_eq!(standings_order(&upsolver, &neither), Ordering::Less);
+    }
+
+    // without this a genuinely tied pair could swap places between two runs of
+    // the same input, which reads as a bug to anyone refreshing the page
+    #[test]
+    fn a_real_tie_falls_back_to_handle_so_the_order_is_stable() {
+        let x = tally("alice", 5, 100, 2);
+        let y = tally("bob", 5, 100, 2);
+        assert_eq!(standings_order(&x, &y), Ordering::Less);
+        assert_eq!(standings_order(&y, &x), Ordering::Greater);
+    }
+
+    #[test]
+    fn handle_comparison_ignores_case() {
+        let upper = tally("Zoe", 5, 100, 0);
+        let lower = tally("adam", 5, 100, 0);
+        assert_eq!(standings_order(&upper, &lower), Ordering::Greater);
+    }
+
+    #[test]
+    fn sorting_a_field_puts_them_in_the_expected_order() {
+        let mut field = [
+            tally("carol", 4, 50, 0),
+            tally("alice", 5, 300, 1),
+            tally("dave", 5, 300, 0),
+            tally("bob", 5, 100, 0),
+        ];
+        field.sort_by(standings_order);
+        let order: Vec<&str> = field.iter().map(|t| t.handle.as_str()).collect();
+        // bob leads on penalty; alice beats dave on upsolved; carol solved fewer
+        assert_eq!(order, vec!["bob", "alice", "dave", "carol"]);
+    }
 }

@@ -516,7 +516,7 @@ pub async fn login(
         user.is_admin.unwrap_or(false),
         user.is_manager.unwrap_or(false),
     )
-    .map_err(|e| AppError::InternalError(e))?;
+    .map_err(AppError::InternalError)?;
 
     Ok(Json(json!({
         "success": true,

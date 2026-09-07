@@ -212,17 +212,13 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
 
         // table header row
         let mut header_row = table.row();
-        header_row.push_element(pad!(Paragraph::new("Rank").styled(header_style.clone())));
-        header_row.push_element(pad!(Paragraph::new("Handle").styled(header_style.clone())));
-        header_row.push_element(pad!(
-            Paragraph::new("Contests Count").styled(header_style.clone())
-        ));
-        header_row.push_element(pad!(Paragraph::new("Solved").styled(header_style.clone())));
-        header_row.push_element(pad!(Paragraph::new("Penalty").styled(header_style.clone())));
-        header_row.push_element(pad!(Paragraph::new("Upsolved").styled(header_style.clone())));
-        header_row.push_element(pad!(
-            Paragraph::new("Total Solved").styled(header_style.clone())
-        ));
+        header_row.push_element(pad!(Paragraph::new("Rank").styled(header_style)));
+        header_row.push_element(pad!(Paragraph::new("Handle").styled(header_style)));
+        header_row.push_element(pad!(Paragraph::new("Contests Count").styled(header_style)));
+        header_row.push_element(pad!(Paragraph::new("Solved").styled(header_style)));
+        header_row.push_element(pad!(Paragraph::new("Penalty").styled(header_style)));
+        header_row.push_element(pad!(Paragraph::new("Upsolved").styled(header_style)));
+        header_row.push_element(pad!(Paragraph::new("Total Solved").styled(header_style)));
         header_row.push().ok();
 
         // 25 rows fit on the first page (with title/header), 36 on subsequent pages
@@ -236,10 +232,8 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
             } else {
                 1
             };
-            if rendered_rows + participant_rows > max_rows {
-                if rendered_rows > 1 {
-                    break;
-                }
+            if rendered_rows + participant_rows > max_rows && rendered_rows > 1 {
+                break;
             }
             rendered_rows += participant_rows;
             end_idx += 1;
@@ -249,9 +243,7 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
             let total_solved = p.problems_solved + p.total_upsolved;
 
             let mut row = table.row();
-            row.push_element(pad!(
-                Paragraph::new(p.rank.to_string()).styled(row_style.clone())
-            ));
+            row.push_element(pad!(Paragraph::new(p.rank.to_string()).styled(row_style)));
             // for merged handles (comma-separated), render each on its own line
             if p.handle.contains(',') {
                 let handles: Vec<&str> = p.handle.split(',').collect();
@@ -262,28 +254,26 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
                     } else {
                         h.trim().to_string()
                     };
-                    layout.push(Paragraph::new(text).styled(row_style.clone()));
+                    layout.push(Paragraph::new(text).styled(row_style));
                 }
                 row.push_element(pad!(layout));
             } else {
-                row.push_element(pad!(
-                    Paragraph::new(p.handle.clone()).styled(row_style.clone())
-                ));
+                row.push_element(pad!(Paragraph::new(p.handle.clone()).styled(row_style)));
             }
             row.push_element(pad!(
-                Paragraph::new(p.contests_participated.to_string()).styled(row_style.clone())
+                Paragraph::new(p.contests_participated.to_string()).styled(row_style)
             ));
             row.push_element(pad!(
-                Paragraph::new(p.problems_solved.to_string()).styled(row_style.clone())
+                Paragraph::new(p.problems_solved.to_string()).styled(row_style)
             ));
             row.push_element(pad!(
-                Paragraph::new(p.total_penalty.to_string()).styled(row_style.clone())
+                Paragraph::new(p.total_penalty.to_string()).styled(row_style)
             ));
             row.push_element(pad!(
-                Paragraph::new(p.total_upsolved.to_string()).styled(row_style.clone())
+                Paragraph::new(p.total_upsolved.to_string()).styled(row_style)
             ));
             row.push_element(pad!(
-                Paragraph::new(total_solved.to_string()).styled(row_style.clone())
+                Paragraph::new(total_solved.to_string()).styled(row_style)
             ));
             row.push().ok();
 
@@ -291,26 +281,25 @@ fn generate_pdf(result: &RankerResponse, include_details: bool) -> Result<Vec<u8
                 for detail in &p.contest_details {
                     let detail_total = detail.solved + detail.upsolved;
                     let mut detail_row = table.row();
-                    detail_row.push_element(pad!(Paragraph::new("").styled(detail_style.clone())));
+                    detail_row.push_element(pad!(Paragraph::new("").styled(detail_style)));
                     detail_row.push_element(pad!(Paragraph::new(format!(
                         "  └─ {}",
                         detail.contest_name
                     ))
-                    .styled(detail_style.clone())));
+                    .styled(detail_style)));
                     let part_val = if detail.participated { "1" } else { "0" };
-                    detail_row
-                        .push_element(pad!(Paragraph::new(part_val).styled(detail_style.clone())));
+                    detail_row.push_element(pad!(Paragraph::new(part_val).styled(detail_style)));
                     detail_row.push_element(pad!(
-                        Paragraph::new(detail.solved.to_string()).styled(detail_style.clone())
+                        Paragraph::new(detail.solved.to_string()).styled(detail_style)
                     ));
                     detail_row.push_element(pad!(
-                        Paragraph::new(detail.penalty.to_string()).styled(detail_style.clone())
+                        Paragraph::new(detail.penalty.to_string()).styled(detail_style)
                     ));
-                    detail_row
-                        .push_element(pad!(Paragraph::new(detail.upsolved.to_string())
-                            .styled(detail_style.clone())));
                     detail_row.push_element(pad!(
-                        Paragraph::new(detail_total.to_string()).styled(detail_style.clone())
+                        Paragraph::new(detail.upsolved.to_string()).styled(detail_style)
+                    ));
+                    detail_row.push_element(pad!(
+                        Paragraph::new(detail_total.to_string()).styled(detail_style)
                     ));
                     detail_row.push().ok();
                 }
