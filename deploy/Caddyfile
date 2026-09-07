@@ -1,0 +1,12 @@
+# Caddy obtains and renews the certificate on its own, which is why port 80
+# has to stay open — let's encrypt validates over http before issuing.
+api.sustcpgeeks.me {
+	reverse_proxy localhost:8080
+
+	# the backend logs its own requests; this records what reached the edge,
+	# including anything rejected before it got that far
+	log {
+		output file /var/log/caddy/api.log
+		format json
+	}
+}

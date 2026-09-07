@@ -1,0 +1,36 @@
+[Unit]
+Description=SUST CP Geeks backend
+# network-online rather than network: the process connects to neon on startup
+# and dies if dns is not resolvable yet
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cpgeeks
+Group=cpgeeks
+WorkingDirectory=/opt/cpgeeks
+ExecStart=/opt/cpgeeks/backend
+
+# secrets live here, root-owned and 0600. never in the unit file, which is
+# world-readable, and never in a .env beside the binary
+EnvironmentFile=/etc/cpgeeks/backend.env
+
+# the process deliberately panics on a missing variable or an unreachable
+# database, so a restart loop is the intended signal that something is wrong.
+# 5s between attempts keeps the logs readable instead of flooding them.
+Restart=always
+RestartSec=5
+
+# hardening: the service needs no privileges, no home directories, and writes
+# nowhere. if it is ever compromised this limits what it can reach.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
