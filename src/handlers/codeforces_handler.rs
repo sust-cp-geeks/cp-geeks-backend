@@ -66,7 +66,7 @@ pub async fn get_leaderboard(
         .into_iter()
         .partition(|(_, _, _, rating, _)| rating.is_some());
 
-    rated.sort_by(|a, b| b.3.cmp(&a.3));
+    rated.sort_by_key(|a| std::cmp::Reverse(a.3));
 
     let mut leaderboard: Vec<LeaderboardEntry> = rated
         .into_iter()
