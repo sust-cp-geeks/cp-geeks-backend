@@ -1,0 +1,12 @@
+[Unit]
+Description=Nightly CP Geeks database backup
+
+[Timer]
+# 02:00 UTC is 08:00 in Dhaka — after any late-night activity has settled
+OnCalendar=*-*-* 02:00:00
+# a missed run (instance stopped overnight) happens on next boot rather than
+# being skipped until tomorrow
+Persistent=true
+
+[Install]
+WantedBy=timers.target

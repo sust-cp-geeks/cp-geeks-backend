@@ -1,0 +1,10 @@
+[Unit]
+Description=Dump the CP Geeks database
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cpgeeks-backup.sh
+# reads /etc/cpgeeks/backend.env, which is root-only
+User=root
