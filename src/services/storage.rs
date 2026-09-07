@@ -56,6 +56,29 @@ pub fn is_configured() -> bool {
 }
 
 // uploads bytes under `key`, replacing anything already there
+// a read that touches the url, the key and the bucket without writing
+// anything, so the health check can tell configured-but-broken from working.
+// a wrong key returns 400 here rather than succeeding, which is what makes
+// this worth probing at all.
+pub async fn probe() -> Result<(), String> {
+    let cfg = config().map_err(|e| format!("{e:?}"))?;
+    let url = format!("{}/storage/v1/bucket/{}", cfg.base, cfg.bucket);
+
+    let response = http::storage()
+        .get(&url)
+        .bearer_auth(&cfg.service_key)
+        .header("apikey", &cfg.service_key)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("storage returned {}", response.status()))
+    }
+}
+
 pub async fn upload(key: &str, body: Vec<u8>, content_type: &str) -> Result<(), AppError> {
     let cfg = config()?;
     let url = format!("{}/storage/v1/object/{}/{}", cfg.base, cfg.bucket, key);

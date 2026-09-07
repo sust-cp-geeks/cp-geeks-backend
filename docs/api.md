@@ -1398,15 +1398,34 @@ The PDF contains:
 ## 10. Health Check
 
 ### GET `/api/health`
-Check server and database connectivity.
+Check server, database and file-storage connectivity. This is the endpoint to
+point an uptime monitor or a load balancer at.
 
 **Access:** Public (no token required)
 
-**Success (200):**
+**Healthy (200):**
 ```json
 {
-  "success": true,
-  "status": "healthy",
-  "database": "connected"
+  "status": "ok",
+  "database": "connected",
+  "storage": "ok"
+}
+```
+
+`storage` is one of `ok`, `unavailable` (configured but not answering — a paused
+Supabase project looks like this), `timeout`, or `not_configured`. **None of them
+change the status code.** Storage is only needed by manual signup, so a instance
+that cannot reach it still serves everything else; taking it out of rotation
+would cause more harm than the fault it reports.
+
+**Unhealthy (503):** returned only when the database is unreachable, since
+nothing works without it. `database` is then `disconnected` or `timeout`, and
+storage is not probed — a 503 should come back quickly rather than waiting on a
+dependency the answer already ignores.
+
+```json
+{
+  "status": "error",
+  "database": "disconnected"
 }
 ```
