@@ -19,6 +19,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # rustls' crypto backend (aws-lc-sys) compiles from C. the github runner
+      # image ships both today, but naming them here means a future image that
+      # drops one fails with an obvious message rather than a confusing
+      # compile error deep inside a dependency.
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy

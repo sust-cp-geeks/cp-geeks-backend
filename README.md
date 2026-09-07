@@ -74,6 +74,15 @@ flowchart TD
 
 ## Getting Started
 
+Needs a Rust toolchain plus **`cmake` and a C compiler** — TLS is handled by
+rustls, whose crypto backend compiles from C. Without them the build fails
+while compiling `aws-lc-sys`, with an error that does not obviously point at
+TLS. On Debian or Ubuntu:
+
+```bash
+sudo apt install build-essential cmake
+```
+
 ```bash
 git clone git@github.com:sust-cp-geeks/cp-geeks-backend.git
 cd cp-geeks-backend
@@ -81,6 +90,12 @@ cd cp-geeks-backend
 cp .env.example .env   # fill in the variables below
 cargo run              # serves at http://localhost:8080
 ```
+
+The release binary links no OpenSSL and needs only libc, so it runs on any
+Linux regardless of what the build machine had installed. The host does still
+need a CA bundle (`ca-certificates`) for outbound mail — present on every normal
+distribution image, absent from minimal container bases such as `scratch` and
+`distroless`.
 
 Apply the schema to a fresh database in order — the files are idempotent, so
 re-running them is safe:
