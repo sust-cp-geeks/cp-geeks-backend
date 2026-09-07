@@ -10,56 +10,81 @@ REST API powering the SUST Competitive Programming Community Platform — built 
 ## Architecture
 
 ```mermaid
-%%{init: {"flowchart": {"nodeSpacing": 22, "rankSpacing": 48}}}%%
-flowchart TD
-    user["👤 User<br/>Web Frontend / API Client"]
+%%{init: {"look": "handDrawn", "flowchart": {"nodeSpacing": 26, "rankSpacing": 50}}}%%
+flowchart TB
+    member["👤 Member<br/><i>browser</i>"]
 
-    subgraph backend["⚙️ cp-geeks backend · Rust + Axum + Tokio"]
-        pipeline["CORS + Tracing → Axum Router → JWT Auth Guard"]
-
-        auth["🔐 auth & users<br/><i>register · login · OTP<br/>ID cards · admin approvals</i>"]
-        content["📋 content<br/><i>contests · events · teams<br/>announcements · problemset</i>"]
-        cf["📊 codeforces<br/><i>profile stats<br/>leaderboard</i>"]
-        ranker["🏆 vjudge ranker<br/><i>ICPC ranking · PDF<br/>(cached sessions)</i>"]
-
-        pipeline --> auth
-        pipeline --> content
-        pipeline --> cf
-        pipeline --> ranker
+    subgraph vercel["▲ Vercel — sustcpgeeks.me"]
+        spa["React · Vite<br/><i>static, built on push to main</i>"]
     end
 
-    db[("🐘 Neon<br/>PostgreSQL")]
-    store[("🗄️ Supabase<br/>Storage")]
-    resend(["✉️ Resend"])
-    cf_api(["🌐 Codeforces API"])
-    vj_api(["🌐 VJudge API"])
+    subgraph aws["☁️ AWS EC2 · ap-southeast-1 Singapore"]
+        caddy["🔒 Caddy<br/><i>api.sustcpgeeks.me · automatic TLS</i>"]
 
-    user == "REST / JSON" ==> pipeline
+        subgraph app["⚙️ backend · Rust + Axum + Tokio"]
+            router["Router<br/><i>CORS → tracing → JWT guard</i>"]
+            auth["🔐 auth &amp; members<br/><i>OTP · ID cards · roles</i>"]
+            content["📋 content<br/><i>announcements · events<br/>contests · problemset</i>"]
+            boards["📊 leaderboards<br/><i>codeforces · atcoder</i>"]
+            ranker["🏆 vjudge ranker<br/><i>ICPC standings · PDF</i>"]
+        end
 
-    auth -- "OTP emails" --> resend
-    auth -- "users" --> db
-    auth -- "ID card photos" --> store
-    content -- "CRUD" --> db
-    cf -- "handles" --> db
-    cf -- "ratings · solves" --> cf_api
-    ranker -- "standings" --> vj_api
+        sync["🔄 background sync<br/><i>every 6h, off the request path</i>"]
+    end
 
-    style backend fill:#f6f8fa,stroke:#8b949e,color:#24292f,stroke-width:1.5px;
+    neon[("🐘 Neon Postgres<br/><i>production branch</i>")]
+    supa[("🗄️ Supabase Storage<br/><i>ID cards, deleted after review</i>")]
+    resend(["✉️ Resend<br/><i>mail.sustcpgeeks.me</i>"])
+    cfapi(["🌐 Codeforces API"])
+    atapi(["🌐 AtCoder + kenkoooo"])
+    vjapi(["🌐 VJudge"])
 
-    classDef userStyle fill:#d6ccff,stroke:#7c3aed,color:#1e1b4b,stroke-width:2px;
-    classDef pipeStyle fill:#f3d1f4,stroke:#c026d3,color:#4a044e,stroke-width:2px;
-    classDef svcStyle fill:#b9f6ca,stroke:#15803d,color:#052e16,stroke-width:2px;
-    classDef ioStyle fill:#bbdefb,stroke:#1d4ed8,color:#172554,stroke-width:2px;
-    classDef dbStyle fill:#fff,stroke:#334155,color:#0f172a,stroke-width:2px;
-    classDef extStyle fill:#a7f3d0,stroke:#0f766e,color:#042f2e,stroke-width:2px;
+    member ==>|"https"| spa
+    spa ==>|"REST / JSON"| caddy
+    caddy ==>|"localhost:8080"| router
 
-    class user userStyle;
-    class pipeline pipeStyle;
-    class auth,content svcStyle;
-    class cf,ranker ioStyle;
-    class db,store dbStyle;
-    class resend,cf_api,vj_api extStyle;
+    router --> auth
+    router --> content
+    router --> boards
+    router --> ranker
+
+    auth --> neon
+    auth -->|"OTP · password reset"| resend
+    auth -->|"photos"| supa
+    content --> neon
+    boards -->|"stored ratings only"| neon
+    ranker -->|"live standings"| vjapi
+
+    sync -.->|"writes ratings"| neon
+    sync -.->|"reads"| cfapi
+    sync -.->|"reads"| atapi
+
+    style vercel fill:#f6f8fa,stroke:#8b949e,color:#24292f
+    style aws fill:#f6f8fa,stroke:#8b949e,color:#24292f
+    style app fill:#eef2f7,stroke:#94a3b8,color:#24292f
+
+    classDef person fill:#d6ccff,stroke:#7c3aed,color:#1e1b4b,stroke-width:2px;
+    classDef web fill:#f3d1f4,stroke:#c026d3,color:#4a044e,stroke-width:2px;
+    classDef svc fill:#b9f6ca,stroke:#15803d,color:#052e16,stroke-width:2px;
+    classDef job fill:#fde68a,stroke:#b45309,color:#451a03,stroke-width:2px;
+    classDef store fill:#fff,stroke:#334155,color:#0f172a,stroke-width:2px;
+    classDef ext fill:#a7f3d0,stroke:#0f766e,color:#042f2e,stroke-width:2px;
+
+    class member person;
+    class spa,caddy,router web;
+    class auth,content,boards,ranker svc;
+    class sync job;
+    class neon,supa store;
+    class resend,cfapi,atapi,vjapi ext;
 ```
+
+**Solid arrows are the request path; dashed arrows are the background sync.** The
+distinction is the point: a member's page load never waits on Codeforces or
+AtCoder. A worker refreshes ratings every six hours and the leaderboards read
+what it stored, so an outage at either judge costs freshness rather than
+availability — which was not a hypothetical, both went down while this was being
+built. The VJudge ranker is the exception and still calls out live, because it
+ranks whichever contests you paste in at that moment.
 
 ## Tech Stack
 
