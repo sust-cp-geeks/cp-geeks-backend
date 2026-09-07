@@ -1,0 +1,20 @@
+# Pinned deliberately, and this is why.
+#
+# CI installed whatever "stable" meant on the day it ran. That is how a branch
+# that nobody had touched went red: rust 1.98 shipped a new clippy lint
+# (unnecessary_sort_by), `-D warnings` promoted it to an error, and the build
+# broke on a file the commit never opened. Meanwhile a laptop on 1.93 ran the
+# same clippy command and saw nothing, so "it passes locally" meant nothing.
+#
+# With the channel pinned, the lint set changes only in a commit that says it
+# changed, and clippy on a laptop checks exactly the rules CI checks.
+#
+# To upgrade: bump the channel here, run
+#     cargo clippy --all-targets -- -D warnings
+# fix whatever the newer release flags, and commit the bump and the fixes
+# together. That way a toolchain upgrade is a reviewable change on its own
+# rather than a surprise on an unrelated pull request.
+[toolchain]
+channel = "1.98.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

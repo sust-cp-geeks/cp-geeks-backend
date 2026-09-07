@@ -26,9 +26,13 @@ jobs:
       - name: Install build dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake build-essential
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+      # deliberately no dtolnay/rust-toolchain step. that action exports
+      # RUSTUP_TOOLCHAIN, which silently outranks rust-toolchain.toml — the
+      # version would be pinned in the repo and ignored here. the runner already
+      # has rustup, so letting it read rust-toolchain.toml keeps one source of
+      # truth for the version, shared with every laptop.
+      - name: Show toolchain
+        run: rustc --version && cargo clippy --version
 
       # without this every run recompiles the whole dependency tree
       - uses: Swatinem/rust-cache@v2
@@ -41,9 +45,9 @@ jobs:
       - name: Test
         run: cargo test --locked
 
-      # enforced. the baseline is zero, so any warning here is something this
-      # change introduced — which is the only state in which a lint gate is
-      # worth having. it was advisory while 25 known warnings drowned out
-      # anything new.
+      # enforced, and safe to enforce only because rust-toolchain.toml pins the
+      # compiler. the baseline is zero warnings, so a warning here comes from
+      # the change being tested — it can no longer come from stable moving
+      # underneath us, which is what broke this job once already.
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
