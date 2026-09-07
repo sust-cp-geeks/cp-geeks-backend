@@ -2,7 +2,7 @@
 
 REST API powering the SUST Competitive Programming Community Platform — built with Rust, Axum, and PostgreSQL.
 
-![Rust](https://img.shields.io/badge/Rust-stable-orange?logo=rust&logoColor=white)
+![Rust](https://img.shields.io/badge/Rust-1.98.0-orange?logo=rust&logoColor=white)
 ![Axum](https://img.shields.io/badge/Axum-0.8-blue)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-316192?logo=postgresql&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
@@ -10,7 +10,7 @@ REST API powering the SUST Competitive Programming Community Platform — built 
 ## Architecture
 
 ```mermaid
-%%{init: {"look": "handDrawn", "flowchart": {"nodeSpacing": 26, "rankSpacing": 50}}}%%
+%%{init: {"flowchart": {"nodeSpacing": 30, "rankSpacing": 55}}}%%
 flowchart TB
     member["👤 Member<br/><i>browser</i>"]
 
@@ -27,9 +27,9 @@ flowchart TB
             content["📋 content<br/><i>announcements · events<br/>contests · problemset</i>"]
             boards["📊 leaderboards<br/><i>codeforces · atcoder</i>"]
             ranker["🏆 vjudge ranker<br/><i>ICPC standings · PDF</i>"]
+            sync["🔄 background sync<br/><i>tokio task · every 6h, off the request path</i>"]
         end
 
-        sync["🔄 background sync<br/><i>every 6h, off the request path</i>"]
     end
 
     neon[("🐘 Neon Postgres<br/><i>production branch</i>")]
@@ -59,16 +59,19 @@ flowchart TB
     sync -.->|"reads"| cfapi
     sync -.->|"reads"| atapi
 
-    style vercel fill:#f6f8fa,stroke:#8b949e,color:#24292f
-    style aws fill:#f6f8fa,stroke:#8b949e,color:#24292f
-    style app fill:#eef2f7,stroke:#94a3b8,color:#24292f
+    %% boundaries are outlines, not fills: a baked-in light fill turns into a
+    %% white slab on github's dark theme, which is what the hatched version did
+    style vercel fill:none,stroke:#8b949e,stroke-width:1px
+    style aws fill:none,stroke:#8b949e,stroke-width:1px
+    style app fill:none,stroke:#94a3b8,stroke-width:1px,stroke-dasharray:5 4
 
-    classDef person fill:#d6ccff,stroke:#7c3aed,color:#1e1b4b,stroke-width:2px;
-    classDef web fill:#f3d1f4,stroke:#c026d3,color:#4a044e,stroke-width:2px;
-    classDef svc fill:#b9f6ca,stroke:#15803d,color:#052e16,stroke-width:2px;
-    classDef job fill:#fde68a,stroke:#b45309,color:#451a03,stroke-width:2px;
-    classDef store fill:#fff,stroke:#334155,color:#0f172a,stroke-width:2px;
-    classDef ext fill:#a7f3d0,stroke:#0f766e,color:#042f2e,stroke-width:2px;
+    %% nodes keep an opaque fill with dark text, so they read on either theme
+    classDef person fill:#ddd6fe,stroke:#7c3aed,color:#1e1b4b,stroke-width:1.5px;
+    classDef web fill:#fbcfe8,stroke:#c026d3,color:#4a044e,stroke-width:1.5px;
+    classDef svc fill:#bbf7d0,stroke:#15803d,color:#052e16,stroke-width:1.5px;
+    classDef job fill:#fde68a,stroke:#b45309,color:#451a03,stroke-width:1.5px;
+    classDef store fill:#e2e8f0,stroke:#334155,color:#0f172a,stroke-width:1.5px;
+    classDef ext fill:#99f6e4,stroke:#0f766e,color:#042f2e,stroke-width:1.5px;
 
     class member person;
     class spa,caddy,router web;
@@ -115,6 +118,12 @@ cd cp-geeks-backend
 cp .env.example .env   # fill in the variables below
 cargo run              # serves at http://localhost:8080
 ```
+
+The compiler version is pinned in `rust-toolchain.toml`, so the first `cargo`
+command may spend a minute fetching that exact toolchain. That is deliberate: CI
+lints with `-D warnings`, and when CI and a laptop ran different compilers a new
+lint in a newer Rust could fail the build on code nobody had touched. Pinning
+means `cargo clippy` here checks the same rules CI does.
 
 The release binary links no OpenSSL and needs only libc, so it runs on any
 Linux regardless of what the build machine had installed. The host does still
@@ -180,6 +189,8 @@ src/
 migrations/          # schema, applied in filename order
 docs/api.md          # full request/response reference
 fonts/               # bundled TTFs for ranker PDF export
+deploy/              # systemd units, Caddyfile, deploy + backup scripts
+rust-toolchain.toml  # pinned compiler, shared by CI and every laptop
 ```
 
 ## Security
