@@ -129,7 +129,7 @@ for f in migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done
 | Announcements | CRUD + `categories` (6) | User / Admin · Manager |
 | Events + Teams | CRUD (8) | Public read / Admin · Manager |
 | Problemset | `GET /` + 3 create endpoints | Public read / Admin write |
-| Admin | User management, ID card review, recovery (9) | Admin |
+| Admin | User management, roles, ID card review, recovery (10) | Admin |
 | VJudge Ranker | `analyze`, `pdf/{session_id}`, `contest-title/{id}` | Public |
 | Health | Server status | Public |
 

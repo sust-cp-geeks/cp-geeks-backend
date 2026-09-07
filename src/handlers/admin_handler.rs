@@ -17,6 +17,14 @@ pub struct UserFilter {
     pub status: Option<String>,
 }
 
+// both optional: sending one leaves the other alone, so granting manager does
+// not silently strip admin
+#[derive(Debug, Deserialize)]
+pub struct RoleUpdateInput {
+    pub is_admin: Option<bool>,
+    pub is_manager: Option<bool>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct StatusUpdateInput {
     pub reason: Option<String>,
@@ -379,6 +387,83 @@ pub async fn admin_reject_user(
 }
 
 // ban an already active user
+// Roles live in the jwt, not in the database read per request, so changing a
+// column alone does nothing until the token expires. Every path here bumps
+// sessions_valid_from, which the auth middleware compares against the token's
+// issue time — the change takes effect on their next request.
+pub async fn admin_update_role(
+    claims: Claims,
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+    Json(body): Json<RoleUpdateInput>,
+) -> Result<Json<Value>, AppError> {
+    require_admin(&claims)?;
+
+    if body.is_admin.is_none() && body.is_manager.is_none() {
+        return Err(AppError::BadRequest(
+            "Send is_admin, is_manager, or both".to_string(),
+        ));
+    }
+
+    // an admin editing their own role is how a club loses its last admin by
+    // accident. changing someone else's is always someone else's decision too,
+    // which is a healthier default than self-service.
+    if claims.user_id == id {
+        return Err(AppError::BadRequest(
+            "You cannot change your own role. Ask another admin.".to_string(),
+        ));
+    }
+
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE user_id = $1")
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or(AppError::NotFound("User not found".to_string()))?;
+
+    let new_admin = body.is_admin.unwrap_or(user.is_admin.unwrap_or(false));
+    let new_manager = body.is_manager.unwrap_or(user.is_manager.unwrap_or(false));
+
+    // demoting the only remaining admin leaves nobody able to approve members,
+    // review id cards, or promote a replacement — recoverable only with
+    // database access, which is exactly what this endpoint exists to avoid.
+    if user.is_admin.unwrap_or(false) && !new_admin {
+        let other_admins = sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM users WHERE is_admin = true AND user_id <> $1",
+        )
+        .bind(id)
+        .fetch_one(&state.pool)
+        .await?;
+
+        if other_admins == 0 {
+            return Err(AppError::BadRequest(
+                "This is the only admin. Promote someone else first.".to_string(),
+            ));
+        }
+    }
+
+    let updated = sqlx::query_as::<_, User>(
+        "UPDATE users SET is_admin = $1, is_manager = $2, sessions_valid_from = NOW()
+         WHERE user_id = $3 RETURNING *",
+    )
+    .bind(new_admin)
+    .bind(new_manager)
+    .bind(id)
+    .fetch_one(&state.pool)
+    .await?;
+
+    let role = match (new_admin, new_manager) {
+        (true, _) => "admin",
+        (false, true) => "manager",
+        (false, false) => "member",
+    };
+
+    Ok(Json(json!({
+        "success": true,
+        "message": format!("{} is now {}. They will be signed out.", updated.name, role),
+        "data": updated
+    })))
+}
+
 pub async fn admin_ban_user(
     claims: Claims,
     State(state): State<AppState>,

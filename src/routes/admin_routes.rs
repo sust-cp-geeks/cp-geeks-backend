@@ -21,5 +21,6 @@ pub fn routes() -> Router<AppState> {
             put(admin_handler::admin_reactivate_user),
         )
         .route("/users/{id}/email", put(admin_handler::admin_update_email))
+        .route("/users/{id}/role", put(admin_handler::admin_update_role))
         .route("/users/{id}", delete(admin_handler::admin_delete_user))
 }

@@ -1164,6 +1164,29 @@ Ends the user's sessions, since the address changed under them.
 
 ---
 
+### PUT `/api/admin/users/{id}/role`
+Make someone a manager or an admin, or take it away. Before this existed the
+only way to appoint an admin was an UPDATE in the database console, which meant
+whoever held the Neon login was the only person who could grant access.
+
+**Access:** Admin only
+
+**Request:** `{ "is_admin": true }` · `{ "is_manager": true }` · or both. An
+omitted field keeps its current value, so granting manager does not strip admin.
+
+Ends the user's sessions. Roles are carried in the token rather than read per
+request, so without that the change would do nothing until the token expired up
+to seven days later.
+
+**Errors:**
+- `400` — changing your own role. Another admin has to do it, which is also what
+  stops someone demoting themselves out of the last admin seat by accident
+- `400` — demoting the only remaining admin. Nobody could then approve members,
+  read ID cards, or appoint a replacement without database access
+- `404` — no such user
+
+---
+
 ### DELETE `/api/admin/users/{id}`
 Remove an account outright. Also deletes any stored ID card. Admins cannot
 delete themselves.
