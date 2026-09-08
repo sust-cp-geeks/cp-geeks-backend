@@ -172,6 +172,16 @@ form fields — so changing the constant is enough and the two cannot drift apar
 
 ---
 
+## Lost data, or need to restore
+
+Restoring is not a triage step — it is a deliberate operation with its own
+failure modes, and doing it under pressure from memory is how a recoverable
+incident becomes an unrecoverable one. See [`backups.md`](backups.md), which
+covers what is and is not backed up, and how to restore into a scratch branch
+rather than over the live database.
+
+---
+
 ## Still stuck? Open an issue
 
 Include, at minimum:

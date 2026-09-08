@@ -148,6 +148,8 @@ for f in migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done
 | `SUPABASE_BUCKET` | For ID cards | Private bucket for ID card photos |
 | `RESEND_FROM_EMAIL` | No | Sender address (defaults to `onboarding@resend.dev`) |
 | `CORS_ALLOWED_ORIGINS` | No | Comma-separated allowed origins (defaults to localhost `:5173`, `:4173`, `:3000`) |
+| `BACKUP_S3_BUCKET` | No | Offsite backup bucket — see [`docs/backups.md`](docs/backups.md) |
+| `ALERT_EMAIL` | No | Destination for systemd failure alerts |
 | `PORT` | No | Listen port (defaults to `8080`) |
 | `RUST_LOG` | No | Log filter (defaults to `info,tower_http=debug`) |
 
@@ -189,6 +191,7 @@ src/
 migrations/          # schema, applied in filename order
 docs/api.md          # full request/response reference
 docs/triage.md       # known failure modes, and how to tell them apart
+docs/backups.md      # what is backed up, and the restore drill
 fonts/               # bundled TTFs for ranker PDF export
 deploy/              # systemd units, Caddyfile, deploy + backup scripts
 rust-toolchain.toml  # pinned compiler, shared by CI and every laptop
