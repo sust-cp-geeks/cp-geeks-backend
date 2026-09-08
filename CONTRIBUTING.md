@@ -76,11 +76,25 @@ your work ──▶ dev ──▶ main ──▶ deploy
 
 Small, obvious changes can go straight to `dev`. Anything that changes an
 endpoint's behaviour, touches auth, or is large enough to want a second pair of
-eyes should be a pull request into `dev`. `main` moves by fast-forward from
-`dev` once CI is green — never commit to `main` directly.
+eyes should be a pull request into `dev`. `main` then moves by fast-forward from
+`dev` once CI is green.
 
-Nothing is enforced by branch protection right now, so this is a convention the
-three of us keep by hand.
+> **Check the base branch on every pull request.** `main` is the repository
+> default, so GitHub pre-fills it as the base. Almost every PR here should
+> target `dev` instead — change it in the dropdown before you open the PR.
+
+`main` is protected, and the protection is enforced for admins too, so it
+applies to all three of us:
+
+- a commit cannot reach `main` unless the **`build, test, lint`** check has
+  already passed on that exact commit — which it will have, from the run on
+  `dev`
+- no force pushes, no deleting the branch
+
+That is why the fast-forward still works: pushing `dev` first runs CI, and the
+green check belongs to the commit rather than to the branch. Fast-forward
+`main` before that run finishes and the push is rejected — wait for it to go
+green, then push.
 
 ---
 

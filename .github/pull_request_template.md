@@ -23,4 +23,7 @@
 - [ ] `README.md` diagram updated, if a service or background job was added
 - [ ] No secrets, `.env` files or connection strings in the diff
 
-<!-- Targets `dev`. `main` only moves by fast-forward from `dev` once CI is green. -->
+<!-- Base branch: this should almost always target `dev`, not `main`. GitHub
+     pre-fills `main` because it is the repo default — change it in the dropdown.
+     `main` is protected and only moves by fast-forward from `dev` once CI is
+     green. -->
