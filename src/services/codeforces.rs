@@ -418,6 +418,10 @@ pub async fn build_profile_stats(handle: &str) -> Result<CfProfileStats, AppErro
         recent_contests,
         contest_attendance,
         attendance_summary,
+        // this path talked to codeforces, so the numbers are current
+        stale: false,
+        synced_at: None,
+        sync_error: None,
     })
 }
 

@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -72,14 +73,14 @@ pub struct CfRatingChange {
 // --- our api response shapes ---
 
 // solve counts grouped by difficulty bucket for a time period
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 pub struct SolveCountPeriod {
     pub total: usize,
     pub buckets: BTreeMap<String, usize>,
 }
 
 // all solve counts across time periods
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 pub struct SolveCounts {
     pub last_1_month: SolveCountPeriod,
     pub last_6_months: SolveCountPeriod,
@@ -116,7 +117,7 @@ pub struct ContestAttendance {
 }
 
 // how much of the timeline they turned up for
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 pub struct AttendanceSummary {
     pub total_contests: usize,
     pub participated: usize,
@@ -140,6 +141,17 @@ pub struct CfProfileStats {
     // participated or missed
     pub contest_attendance: Vec<ContestAttendance>,
     pub attendance_summary: AttendanceSummary,
+    // true when codeforces could not be reached and these numbers came out of
+    // our own tables instead. the frontend needs to say so rather than present
+    // a possibly days-old rating as current.
+    pub stale: bool,
+    // when the background sync last wrote these values. null on a live read,
+    // because a live read is by definition current.
+    pub synced_at: Option<NaiveDateTime>,
+    // set when the last sync could not read this handle. distinguishes "codeforces
+    // is down" from "this handle no longer exists", which look identical from the
+    // outside but need opposite responses from the member.
+    pub sync_error: Option<String>,
 }
 
 // leaderboard row
