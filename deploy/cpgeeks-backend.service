@@ -22,6 +22,17 @@ EnvironmentFile=/etc/cpgeeks/backend.env
 Restart=always
 RestartSec=5
 
+# Deliberately no StartLimitBurst/StartLimitIntervalSec. The process panics on an
+# unreachable database, so crash-looping is its normal response to a transient
+# neon outage. Any start limit would convert that into permanent downtime: the
+# service gives up, and stays down after neon recovers, at whatever hour it
+# happened. Retrying forever is the right trade for a club with nobody on call.
+#
+# The consequence is that this unit almost never enters `failed`, so the handler
+# below is a long shot rather than real coverage. Knowing the API is down needs
+# an external uptime check — see docs/backups.md.
+OnFailure=cpgeeks-alert@%n.service
+
 # hardening: the service needs no privileges, no home directories, and writes
 # nowhere. if it is ever compromised this limits what it can reach.
 NoNewPrivileges=true

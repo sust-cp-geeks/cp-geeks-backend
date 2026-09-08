@@ -27,8 +27,15 @@ scp -i "$KEY" target/release/backend "$HOST:/tmp/backend.new"
 echo "==> uploading fonts"
 scp -i "$KEY" -r fonts "$HOST:/tmp/fonts.new"
 
+# the OnFailure= handler in the unit files runs this. shipping the units without
+# it leaves systemd pointing at a path that does not exist, which fails silently
+# at exactly the moment something else has already gone wrong.
+echo "==> uploading alert handler"
+scp -i "$KEY" deploy/cpgeeks-alert.sh "$HOST:/tmp/cpgeeks-alert.sh.new"
+
 echo "==> installing and restarting"
 ssh -i "$KEY" "$HOST" '
+  sudo install -o root -g root -m 0755 /tmp/cpgeeks-alert.sh.new /opt/cpgeeks/cpgeeks-alert.sh &&
   sudo install -o cpgeeks -g cpgeeks -m 0755 /tmp/backend.new /opt/cpgeeks/backend &&
   sudo rm -rf /opt/cpgeeks/fonts &&
   sudo mv /tmp/fonts.new /opt/cpgeeks/fonts &&

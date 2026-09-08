@@ -1,0 +1,14 @@
+[Unit]
+Description=Send a failure alert for %i
+# no OnFailure= here on purpose: if the alerter itself fails there is nothing
+# useful left to escalate to, and a self-referencing handler loops.
+
+[Service]
+Type=oneshot
+ExecStart=/opt/cpgeeks/cpgeeks-alert.sh %i
+
+# reads the resend key out of the env file, so it needs root and no network
+# restrictions — but nothing else
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true

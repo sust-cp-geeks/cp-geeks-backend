@@ -3,6 +3,10 @@ Description=Dump the CP Geeks database
 After=network-online.target
 Wants=network-online.target
 
+# a oneshot is the ideal shape for this: it either finishes or it fails, so
+# OnFailure= fires exactly once and means exactly one thing
+OnFailure=cpgeeks-alert@%n.service
+
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/cpgeeks-backup.sh
