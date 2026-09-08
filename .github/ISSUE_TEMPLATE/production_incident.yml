@@ -1,0 +1,87 @@
+name: Production incident
+description: The live site or API is broken right now for real users.
+title: "[incident] "
+labels: ["bug", "incident"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Use this when something is **currently broken for members**. For a bug
+        that is annoying but not urgent, use the bug report instead.
+
+
+        Before filing, run the health check — it takes five seconds and rules
+        out most of what this could be:
+
+
+        ```
+        curl -s https://api.sustcpgeeks.me/api/health
+        ```
+
+  - type: textarea
+    id: health
+    attributes:
+      label: Health check output
+      description: Paste the full output. "No response at all" is also an answer.
+      placeholder: '{"status":"ok","database":"connected","storage":"ok"}'
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What is broken
+      description: What can members not do right now?
+      placeholder: Nobody can log in — the page says "Could not connect to the server".
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Who is affected
+      description: >-
+        Log out and retry in a private window before answering. A stale token
+        looks exactly like a permissions bug.
+      options:
+        - Everyone
+        - Some members, not all
+        - Only me
+        - Not sure yet
+    validations:
+      required: true
+
+  - type: input
+    id: started
+    attributes:
+      label: When did it start
+      placeholder: Around 21:30 today, right after the deploy
+    validations:
+      required: true
+
+  - type: textarea
+    id: changed
+    attributes:
+      label: What changed just before
+      description: >-
+        A deploy, an environment variable, a DNS record, a paused Neon or
+        Supabase project, an expired plan. Most incidents follow a change.
+      placeholder: Pushed to main about ten minutes earlier.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Server logs
+      description: >-
+        `sudo journalctl -u cpgeeks-backend -n 50 --no-pager` — only if you have
+        server access. Leave blank if you don't.
+      render: shell
+
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: Already ruled out
+      options:
+        - label: I read docs/triage.md and it isn't one of the listed causes
+        - label: It still happens in a private window / logged out
+        - label: It happens for someone else too, not just my machine

@@ -188,6 +188,7 @@ src/
 
 migrations/          # schema, applied in filename order
 docs/api.md          # full request/response reference
+docs/triage.md       # known failure modes, and how to tell them apart
 fonts/               # bundled TTFs for ranker PDF export
 deploy/              # systemd units, Caddyfile, deploy + backup scripts
 rust-toolchain.toml  # pinned compiler, shared by CI and every laptop
@@ -203,6 +204,20 @@ rust-toolchain.toml  # pinned compiler, shared by CI and every laptop
 - **ID cards** — private bucket, 5-minute signed URLs, EXIF stripped on upload,
   deleted as soon as an admin decides
 - **Queries** — parameterized throughout; database errors are logged, never echoed to clients
+
+## Contributing
+
+Setup, the three commands CI runs, and how branches and commits work here:
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+If something is broken rather than missing, start with
+[`docs/triage.md`](docs/triage.md) — it covers the failure modes this project
+has actually hit in production and what each one looks like from the outside.
+Several of them are indistinguishable from "the server is down" until you check,
+so it is worth reading before filing anything.
+
+Bug reports, production incidents and feature requests each have a form under
+**Issues → New issue**.
 
 ## License
 

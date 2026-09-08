@@ -1,0 +1,10 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Something is broken — check this first
+    url: https://github.com/sust-cp-geeks/cp-geeks-backend/blob/main/docs/triage.md
+    about: >-
+      Known failure modes and how to tell them apart. Often answers the question
+      faster than an issue can, and tells you what to include if it doesn't.
+  - name: How to set up and contribute
+    url: https://github.com/sust-cp-geeks/cp-geeks-backend/blob/main/CONTRIBUTING.md
+    about: Setup, the commands CI runs, and how commits and branches work here.

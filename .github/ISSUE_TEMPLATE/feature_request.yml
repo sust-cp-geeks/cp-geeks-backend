@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest something the platform should do.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve
+      description: >-
+        Describe the problem, not the solution. "Members can't tell which
+        contests they missed" leads somewhere better than "add a calendar",
+        because it leaves room for a simpler answer.
+      placeholder: >-
+        New members have no way to find out which contests are upcoming without
+        asking in the group chat.
+    validations:
+      required: true
+
+  - type: textarea
+    id: who
+    attributes:
+      label: Who needs it
+      description: Everyone, new members, admins, contest organisers?
+    validations:
+      required: true
+
+  - type: textarea
+    id: shape
+    attributes:
+      label: What it might look like
+      description: Rough is fine. Skip it if you only have the problem.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: How is this handled today
+      description: >-
+        If there is a manual workaround, say what it is — how painful it is is
+        the strongest argument for building something.

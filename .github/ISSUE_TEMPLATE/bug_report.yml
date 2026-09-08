@@ -1,0 +1,78 @@
+name: Bug report
+description: Something works incorrectly, but the site is not down.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        If the site is **down right now**, use the production incident template
+        instead so it gets picked up faster.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+      placeholder: >-
+        Opened my Codeforces profile. Expected my rating. The page showed
+        "Unrated" even though my handle is set.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: >-
+        Numbered, starting from a logged-out browser if you can. A bug someone
+        else can reproduce gets fixed; one they can't usually doesn't.
+      placeholder: |
+        1. Log in as a normal member
+        2. Go to Codeforces → click my own name
+        3. Rating shows "Unrated"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part
+      options:
+        - Login / registration / OTP
+        - Member profile
+        - Codeforces pages
+        - AtCoder pages
+        - Announcements / events / contests
+        - Problemset
+        - VJudge ranker / PDF export
+        - Admin panel
+        - Something else
+    validations:
+      required: true
+
+  - type: dropdown
+    id: role
+    attributes:
+      label: Your role when it happened
+      options:
+        - Member
+        - Manager
+        - Admin
+        - Logged out
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: Browser and device
+      placeholder: Chrome on Windows 11 · Safari on iPhone
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshot or console output
+      description: >-
+        A screenshot usually explains it faster than a paragraph. For a blank or
+        broken page, the browser console (F12 → Console) is the useful bit.
