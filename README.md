@@ -9,77 +9,9 @@ REST API powering the SUST Competitive Programming Community Platform — built 
 
 ## Architecture
 
-```mermaid
-%%{init: {"flowchart": {"nodeSpacing": 30, "rankSpacing": 55}}}%%
-flowchart TB
-    member["👤 Member<br/><i>browser</i>"]
-
-    subgraph vercel["▲ Vercel — sustcpgeeks.me"]
-        spa["React · Vite<br/><i>static, built on push to main</i>"]
-    end
-
-    subgraph aws["☁️ AWS EC2 · ap-southeast-1 Singapore"]
-        caddy["🔒 Caddy<br/><i>api.sustcpgeeks.me · automatic TLS</i>"]
-
-        subgraph app["⚙️ backend · Rust + Axum + Tokio"]
-            router["Router<br/><i>CORS → tracing → JWT guard</i>"]
-            auth["🔐 auth &amp; members<br/><i>OTP · ID cards · roles</i>"]
-            content["📋 content<br/><i>announcements · events<br/>contests · problemset</i>"]
-            boards["📊 leaderboards<br/><i>codeforces · atcoder</i>"]
-            ranker["🏆 vjudge ranker<br/><i>ICPC standings · PDF</i>"]
-            sync["🔄 background sync<br/><i>tokio task · every 6h, off the request path</i>"]
-        end
-
-    end
-
-    neon[("🐘 Neon Postgres<br/><i>production branch</i>")]
-    supa[("🗄️ Supabase Storage<br/><i>ID cards, deleted after review</i>")]
-    resend(["✉️ Resend<br/><i>mail.sustcpgeeks.me</i>"])
-    cfapi(["🌐 Codeforces API"])
-    atapi(["🌐 AtCoder + kenkoooo"])
-    vjapi(["🌐 VJudge"])
-
-    member ==>|"https"| spa
-    spa ==>|"REST / JSON"| caddy
-    caddy ==>|"localhost:8080"| router
-
-    router --> auth
-    router --> content
-    router --> boards
-    router --> ranker
-
-    auth --> neon
-    auth -->|"OTP · password reset"| resend
-    auth -->|"photos"| supa
-    content --> neon
-    boards -->|"stored ratings only"| neon
-    ranker -->|"live standings"| vjapi
-
-    sync -.->|"writes ratings"| neon
-    sync -.->|"reads"| cfapi
-    sync -.->|"reads"| atapi
-
-    %% boundaries are outlines, not fills: a baked-in light fill turns into a
-    %% white slab on github's dark theme, which is what the hatched version did
-    style vercel fill:none,stroke:#8b949e,stroke-width:1px
-    style aws fill:none,stroke:#8b949e,stroke-width:1px
-    style app fill:none,stroke:#94a3b8,stroke-width:1px,stroke-dasharray:5 4
-
-    %% nodes keep an opaque fill with dark text, so they read on either theme
-    classDef person fill:#ddd6fe,stroke:#7c3aed,color:#1e1b4b,stroke-width:1.5px;
-    classDef web fill:#fbcfe8,stroke:#c026d3,color:#4a044e,stroke-width:1.5px;
-    classDef svc fill:#bbf7d0,stroke:#15803d,color:#052e16,stroke-width:1.5px;
-    classDef job fill:#fde68a,stroke:#b45309,color:#451a03,stroke-width:1.5px;
-    classDef store fill:#e2e8f0,stroke:#334155,color:#0f172a,stroke-width:1.5px;
-    classDef ext fill:#99f6e4,stroke:#0f766e,color:#042f2e,stroke-width:1.5px;
-
-    class member person;
-    class spa,caddy,router web;
-    class auth,content,boards,ranker svc;
-    class sync job;
-    class neon,supa store;
-    class resend,cfapi,atapi,vjapi ext;
-```
+<p align="center">
+  <img src="docs/mermaid-dia.excalidraw.png" alt="SUST CP Geeks Backend Architecture" width="100%" />
+</p>
 
 **Solid arrows are the request path; dashed arrows are the background sync.** The
 distinction is the point: a member's page load never waits on Codeforces or
