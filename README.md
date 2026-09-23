@@ -10,7 +10,7 @@ REST API powering the SUST Competitive Programming Community Platform — built 
 ## Architecture
 
 <p align="center">
-  <img src="docs/mermaid-dia.excalidraw.png" alt="SUST CP Geeks Backend Architecture" width="100%" />
+  <img src="docs/mermaid-dia.excalidraw.svg" alt="SUST CP Geeks Backend Architecture" width="100%" />
 </p>
 
 **Solid arrows are the request path; dashed arrows are the background sync.** The
